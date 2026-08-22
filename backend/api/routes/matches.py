@@ -88,15 +88,23 @@ def get_results(
 def get_upcoming_fixtures(
     league: Optional[str] = None,
     limit: int = 50,
+    include_past: bool = False,
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Fetch upcoming scheduled fixtures from the database (synced from football-data.org).
+    Filters out past matches (kickoff_utc < now - 2h) unless include_past is True.
     If database contains no fixtures, attempts an automatic API sync.
-    Returns list of {id, league, season, matchday, home_team, away_team, date, kickoff_local, status}.
+    Returns list of {id, league, season, matchday, home_team, away_team, date, time, kickoff_local, status}.
     """
+    from datetime import timedelta
     query = db.query(Fixture)
+
+    if not include_past:
+        cutoff_time = datetime.utcnow() - timedelta(hours=2)
+        query = query.filter(Fixture.kickoff_utc >= cutoff_time)
+
     if league:
         slug = league.lower().strip()
         if slug == "epl":
@@ -125,6 +133,14 @@ def get_upcoming_fixtures(
     result = []
     for f in fixtures:
         iso_date = f.kickoff_utc.strftime("%Y-%m-%d") if f.kickoff_utc else ""
+        time_str = ""
+        if f.kickoff_local and " " in f.kickoff_local:
+            parts = f.kickoff_local.split(" ")
+            if len(parts) >= 2:
+                time_str = parts[1]
+        elif f.kickoff_utc:
+            time_str = f.kickoff_utc.strftime("%H:%M")
+
         result.append({
             "id": f.id,
             "external_id": f.external_id,
@@ -134,6 +150,7 @@ def get_upcoming_fixtures(
             "home_team": f.home_team,
             "away_team": f.away_team,
             "date": iso_date or f.kickoff_local or "",
+            "time": time_str,
             "kickoff_local": f.kickoff_local,
             "kickoff_utc": f.kickoff_utc.isoformat() if f.kickoff_utc else None,
             "status": f.status,

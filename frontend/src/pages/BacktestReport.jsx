@@ -47,14 +47,16 @@ export default function BacktestReport() {
       toast.error('Update failed')
     }
   }
-
-  const TARGET = 0.19
+  const outcomeModelInfo = modelInfo.find(m => m.id === 'outcome')
+  const brierTargetStr = outcomeModelInfo?.target || 'Brier Score < 0.22'
+  const brierTargetMatch = brierTargetStr.match(/< ([\d\.]+)/)
+  const brierTargetVal = brierTargetMatch ? parseFloat(brierTargetMatch[1]) : 0.22
 
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Model Backtest Report</h1>
-        <p className="page-subtitle">Walk-forward validation — Train ≤2022, Val 2023-24, Test 2025+</p>
+        <p className="page-subtitle">Walk-forward validation — Train ≤ 2022, Val 2023-24, Test 2025+</p>
       </div>
 
       <div className="page-body">
@@ -63,14 +65,14 @@ export default function BacktestReport() {
           <div className="card-title" style={{ marginBottom: 16 }}>⚙️ Admin Controls</div>
           <div className="flex gap-3" style={{ gap: 12, flexWrap: 'wrap' }}>
             <button id="run-backtest-btn" className="btn btn-primary" onClick={runBacktest} disabled={running}>
-              {running ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Running...</> : '🔬 Run Full Backtest & Retrain'}
+              {running ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Running...</> : '🚀 Run Full Backtest & Retrain'}
             </button>
             <button id="update-data-btn" className="btn btn-secondary" onClick={runUpdate}>
               🔄 Fetch Latest Data
             </button>
           </div>
           <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-            ⚠️ Retraining triggers a full walk-forward backtest on 45k+ matches. Dixon-Coles optimization typically takes 1–3 minutes.
+            💡 Retraining triggers a full walk-forward backtest on 45k+ matches. Dixon-Coles optimization typically takes 1–3 minutes.
           </div>
         </div>
 
@@ -78,16 +80,16 @@ export default function BacktestReport() {
         <div className="stat-grid mb-6">
           <div className="stat-card">
             <div className="stat-label">Brier Target</div>
-            <div className="stat-value text-teal">&lt; {TARGET}</div>
+            <div className="stat-value text-teal">&lt; {brierTargetVal}</div>
             <div className="stat-sub">1X2 Outcome Model</div>
           </div>
           {metrics?.outcome && (
-            <div className={`stat-card ${metrics.outcome.ensemble_brier < TARGET ? 'green' : 'red'}`}>
+            <div className={`stat-card ${metrics.outcome.ensemble_brier < brierTargetVal ? 'green' : 'red'}`}>
               <div className="stat-label">Ensemble Brier</div>
-              <div className="stat-value" style={{ color: metrics.outcome.ensemble_brier < TARGET ? 'var(--green)' : 'var(--red)', fontSize: 24 }}>
+              <div className="stat-value" style={{ color: metrics.outcome.ensemble_brier < brierTargetVal ? 'var(--green)' : 'var(--red)', fontSize: 24 }}>
                 {metrics.outcome.ensemble_brier?.toFixed(4)}
               </div>
-              <div className="stat-sub">{metrics.outcome.pass ? '✅ Target Met' : '❌ Below Target'}</div>
+              <div className="stat-sub">{metrics.outcome.ensemble_brier < brierTargetVal ? '✓ Target Met' : '✗ Above Target'}</div>
             </div>
           )}
           {metrics?.corners?.home && (
@@ -98,17 +100,17 @@ export default function BacktestReport() {
             </div>
           )}
           {metrics?.fouls?.home && (
-            <div className="stat-card">
-              <div className="stat-label">Fouls R²</div>
-              <div className="stat-value" style={{ fontSize: 24 }}>{metrics.fouls.home?.r2?.toFixed(3)}</div>
-              <div className="stat-sub">Home fouls</div>
+            <div className="stat-card green">
+              <div className="stat-label">Fouls MAE</div>
+              <div className="stat-value" style={{ fontSize: 24 }}>{metrics.fouls.home?.mae?.toFixed(3)}</div>
+              <div className="stat-sub">Home fouls MAE</div>
             </div>
           )}
         </div>
 
         {/* Model Architecture Overview (Dynamically rendered from backend GET /api/models/info) */}
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 20 }}>🧠 Model Architecture Overview</div>
+          <div className="card-title" style={{ marginBottom: 20 }}>📊 Model Architecture Overview</div>
           {(modelInfo.length > 0 ? modelInfo : [
             { id: 'outcome', name: '1X2 Outcome', architecture: 'XGBoost + Logistic Regression (60/40 Ensemble)', target: 'Brier Score < 0.22', badge: 'badge-teal' },
             { id: 'goals', name: 'xG & BTTS', architecture: 'Dixon-Coles Bivariate Poisson (MLE, L-BFGS-B)', target: 'BTTS Log-Loss', badge: 'badge-purple' },
@@ -125,7 +127,7 @@ export default function BacktestReport() {
             } else if (m.id === 'corners' && metrics?.corners?.home) {
               metricText = `${metrics.corners.home.mae?.toFixed(3)} MAE`
             } else if (m.id === 'fouls' && metrics?.fouls?.home) {
-              metricText = `${metrics.fouls.home.r2?.toFixed(3)} R²`
+              metricText = `${metrics.fouls.home.mae?.toFixed(3)} MAE`
             }
 
             return (
