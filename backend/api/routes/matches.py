@@ -87,43 +87,57 @@ def get_results(
 @router.get("/upcoming")
 def get_upcoming_fixtures(
     league: Optional[str] = None,
+    limit: int = 50,
     _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Fetch upcoming fixtures from football-data.org free API.
-    Returns list of {home_team, away_team, date, league}.
+    Fetch upcoming scheduled fixtures from the database (synced from football-data.org).
+    If database contains no fixtures, attempts an automatic API sync.
+    Returns list of {id, league, season, matchday, home_team, away_team, date, kickoff_local, status}.
     """
-    leagues_to_fetch = [league.lower()] if league else list(LEAGUE_CODES.keys())
-    fixtures = []
+    query = db.query(Fixture)
+    if league:
+        slug = league.lower().strip()
+        if slug == "epl":
+            slug = "premier-league"
+        elif slug in ("es la liga", "la liga"):
+            slug = "la-liga"
+        elif slug in ("it serie a", "serie a"):
+            slug = "serie-a"
+        elif slug in ("fr ligue 1", "ligue 1"):
+            slug = "ligue-1"
+        elif slug in ("de bundesliga", "bundesliga"):
+            slug = "bundesliga"
+        query = query.filter(Fixture.league == slug)
 
-    try:
-        import pandas as pd
-        from io import StringIO
-        url = "https://www.football-data.co.uk/fixtures.csv"
-        resp = requests.get(url, timeout=20, headers={"User-Agent": "SoccerOracle/1.0"})
-        if resp.status_code == 200 and "<html" not in resp.text.lower()[:500]:
-            df = pd.read_csv(StringIO(resp.content.decode("latin1")), low_memory=False)
-            
-            # Map Div back to league name
-            div_to_league = {v: k for k, v in LEAGUE_CODES.items()}
-            
-            # Filter to our requested leagues
-            if "Div" in df.columns:
-                requested_divs = [LEAGUE_CODES[lg] for lg in leagues_to_fetch if lg in LEAGUE_CODES]
-                df = df[df["Div"].isin(requested_divs)]
-                
-                for _, row in df.iterrows():
-                    fixtures.append({
-                        "league": div_to_league.get(row["Div"]),
-                        "date": str(row.get("Date", "")),
-                        "time": str(row.get("Time", "")),
-                        "home_team": str(row.get("HomeTeam", "")),
-                        "away_team": str(row.get("AwayTeam", "")),
-                    })
-    except Exception as e:
-        print(f"[Fixtures] Error fetching fixtures.csv: {e}")
+    fixtures = query.order_by(Fixture.kickoff_utc.asc()).limit(limit).all()
 
-    return fixtures
+    # Fallback: if database has 0 fixtures, trigger sync from football-data.org
+    if not fixtures:
+        try:
+            from ...data.fixture_sync import sync_all_fixtures
+            sync_all_fixtures()
+            fixtures = query.order_by(Fixture.kickoff_utc.asc()).limit(limit).all()
+        except Exception as e:
+            print(f"[Matches] Fixture auto-sync error: {e}")
+
+    result = []
+    for f in fixtures:
+        result.append({
+            "id": f.id,
+            "external_id": f.external_id,
+            "league": f.league,
+            "season": f.season,
+            "matchday": f.matchday,
+            "home_team": f.home_team,
+            "away_team": f.away_team,
+            "date": f.kickoff_local or (f.kickoff_utc.strftime("%Y-%m-%d %H:%M SAST") if f.kickoff_utc else ""),
+            "kickoff_local": f.kickoff_local,
+            "kickoff_utc": f.kickoff_utc.isoformat() if f.kickoff_utc else None,
+            "status": f.status,
+        })
+    return result
 
 
 @router.get("/standings")
