@@ -12,9 +12,7 @@ from typing import Optional
 import jwt
 import bcrypt
 import os
-
-from ..data.database import get_db, User
-
+from ...data.database import get_db, User
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 SECRET_KEY = os.getenv("JWT_SECRET", "svikirorebhora-secret-key-2026-change-in-prod")
