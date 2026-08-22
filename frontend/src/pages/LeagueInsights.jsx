@@ -65,6 +65,21 @@ export default function LeagueInsights() {
     ? ((results.reduce((s,m) => s + (m.hc||0) + (m.ac||0), 0)) / results.length).toFixed(1)
     : '—'
 
+  // Cards stats (Yellows + 2*Reds)
+  const avgCards = results.length > 0
+    ? ((results.reduce((s,m) => s + (m.hy||0) + (m.ay||0) + 2*((m.hr||0) + (m.ar||0)), 0)) / results.length).toFixed(1)
+    : '—'
+
+  // Total Shots stats
+  const avgShots = results.length > 0
+    ? ((results.reduce((s,m) => s + (m.hs||0) + (m.as_||0), 0)) / results.length).toFixed(1)
+    : '—'
+
+  // Shots on Target (SOT) stats
+  const avgSot = results.length > 0
+    ? ((results.reduce((s,m) => s + (m.hst||0) + (m.ast||0), 0)) / results.length).toFixed(1)
+    : '—'
+
   return (
     <div>
       <div className="page-header">
@@ -94,6 +109,9 @@ export default function LeagueInsights() {
           <div className="stat-card amber"><div className="stat-label">Avg Goals</div><div className="stat-value">{avgGoals}</div><div className="stat-sub">Per match</div></div>
           <div className="stat-card green"><div className="stat-label">BTTS Rate</div><div className="stat-value">{bttsRate}%</div><div className="stat-sub">{btts} of {results.length} matches</div></div>
           <div className="stat-card"><div className="stat-label">Avg Corners</div><div className="stat-value">{avgCorners}</div><div className="stat-sub">Total per match</div></div>
+          <div className="stat-card rose"><div className="stat-label">Avg Cards</div><div className="stat-value">{avgCards}</div><div className="stat-sub">Total per match</div></div>
+          <div className="stat-card cyan"><div className="stat-label">Avg Shots</div><div className="stat-value">{avgShots}</div><div className="stat-sub">Total per match</div></div>
+          <div className="stat-card purple"><div className="stat-label">Avg SOT</div><div className="stat-value">{avgSot}</div><div className="stat-sub">On target per match</div></div>
         </div>
 
         <div className="grid-2 mb-6">

@@ -345,6 +345,8 @@ input, select, textarea { font-family: var(--font); }
 .stat-card.green::before { background: var(--green); }
 .stat-card.red::before   { background: var(--red); }
 .stat-card.purple::before{ background: var(--purple); }
+.stat-card.cyan::before  { background: #00C7BE; }
+.stat-card.rose::before  { background: #FF2D55; }
 
 .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; }
 .stat-value { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
