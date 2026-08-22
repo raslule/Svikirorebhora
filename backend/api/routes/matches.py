@@ -124,6 +124,7 @@ def get_upcoming_fixtures(
 
     result = []
     for f in fixtures:
+        iso_date = f.kickoff_utc.strftime("%Y-%m-%d") if f.kickoff_utc else ""
         result.append({
             "id": f.id,
             "external_id": f.external_id,
@@ -132,7 +133,7 @@ def get_upcoming_fixtures(
             "matchday": f.matchday,
             "home_team": f.home_team,
             "away_team": f.away_team,
-            "date": f.kickoff_local or (f.kickoff_utc.strftime("%Y-%m-%d %H:%M SAST") if f.kickoff_utc else ""),
+            "date": iso_date or f.kickoff_local or "",
             "kickoff_local": f.kickoff_local,
             "kickoff_utc": f.kickoff_utc.isoformat() if f.kickoff_utc else None,
             "status": f.status,

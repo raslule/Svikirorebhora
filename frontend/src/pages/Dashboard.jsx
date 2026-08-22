@@ -152,7 +152,13 @@ function FixtureRow({ fixture, isSelected, onClick }) {
         )}
         {fixture.date && (
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-            {new Date(fixture.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) || fixture.date}
+            {(() => {
+              const d = new Date(fixture.kickoff_utc || fixture.date);
+              if (!isNaN(d.getTime())) {
+                return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+              }
+              return fixture.date ? fixture.date.replace(' SAST', '') : '';
+            })()}
           </div>
         )}
       </div>
