@@ -17,19 +17,38 @@ build/
 
 # Node
 node_modules/
+frontend/node_modules/
 frontend/dist/
 frontend/.env
 
-# Data & DB (large files)
-data/*.db
-data/*.csv
+# Data & DB (derived/disposable artifacts)
+*.db
 *.csv
+data/
+downloaded_files/
 
-# IDE
+# Temporary / Scratch & Screenshot artifacts
+*.png
+*.webp
+*.jpg
+*.jpeg
+output.txt
+frontend_diff.txt
+temp.py
+temp_*.py
+scratch_*.py
+modify*.py
+fix*.py
+check_*.py
+puppeteer_check.js
+parse_jsx.js
+recover_jsx.py
+restore_ui.py
+capture_*.js
+
+# IDE & OS
 .vscode/
 .idea/
 *.swp
-
-# OS
 .DS_Store
 Thumbs.db
