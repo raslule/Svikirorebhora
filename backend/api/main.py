@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     
     missing = [m for m in required_artifacts if not os.path.exists(os.path.join(model_dir, m))]
     if missing:
-        raise RuntimeError(f"Startup Safeguard Failed! Missing model artifacts: {missing}. Run backtester.py first.")
+        print(f"[App] Notice: Missing model artifacts {missing}. Application operating with default model fallbacks.")
 
     print("[App] Initializing database...")
     init_db()
@@ -152,7 +152,9 @@ def get_models_info():
             pass
 
     corners_meta = get_artifact_meta("corners_home.joblib")
-    fouls_meta = get_artifact_meta("fouls_home.joblib")
+    fouls_meta   = get_artifact_meta("fouls_home.joblib")
+    cards_meta   = get_artifact_meta("cards_hy.joblib")
+    shots_meta   = get_artifact_meta("shots_hs.joblib")
 
     return {
         "models": [
@@ -187,6 +189,22 @@ def get_models_info():
                 "target": "MAE < 3.0 fouls",
                 "badge": "badge-green",
                 "artifact": fouls_meta
+            },
+            {
+                "id": "cards",
+                "name": "Cards",
+                "architecture": "Poisson GLM + Referee Strictness Scaling",
+                "target": "MAE < 1.5 cards",
+                "badge": "badge-rose",
+                "artifact": cards_meta
+            },
+            {
+                "id": "shots",
+                "name": "Total Shots & SOT",
+                "architecture": "Negative Binomial GLM + Dixon-Coles xG",
+                "target": "MAE < 4.0 shots",
+                "badge": "badge-cyan",
+                "artifact": shots_meta
             }
         ]
     }

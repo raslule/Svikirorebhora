@@ -32,6 +32,8 @@ class PredictResponse(BaseModel):
     goals: dict
     corners: dict
     fouls: dict
+    cards: Optional[dict] = None
+    shots: Optional[dict] = None
     meta: dict
 
 

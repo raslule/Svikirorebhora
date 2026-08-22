@@ -9,7 +9,7 @@ import os
 from typing import Dict
 
 from ..data.feature_engineering import build_features
-from . import outcome_model, goals_model, corners_model, fouls_model
+from . import outcome_model, goals_model, corners_model, fouls_model, cards_model, shots_model
 
 
 def run_backtest() -> Dict:
@@ -87,6 +87,22 @@ def run_backtest() -> Dict:
         results["fouls"] = fouls_results
     except Exception as e:
         results["fouls"] = {"error": str(e)}
+
+    # 5. Cards model
+    print("[Backtester] Training Cards Model...")
+    try:
+        cards_results = cards_model.train(df)
+        results["cards"] = cards_results
+    except Exception as e:
+        results["cards"] = {"error": str(e)}
+
+    # 6. Shots model
+    print("[Backtester] Training Shots Model...")
+    try:
+        shots_results = shots_model.train(df)
+        results["shots"] = shots_results
+    except Exception as e:
+        results["shots"] = {"error": str(e)}
 
     print("[Backtester] Complete.")
     print(results)

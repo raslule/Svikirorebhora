@@ -8,9 +8,9 @@ import os
 from typing import Dict, Optional
 from datetime import datetime
 
-from . import outcome_model, goals_model, corners_model, fouls_model
+from . import outcome_model, goals_model, corners_model, fouls_model, cards_model, shots_model
 from ..data.feature_engineering import (
-    build_features, OUTCOME_FEATURES, CORNERS_FEATURES, FOULS_FEATURES
+    build_features, OUTCOME_FEATURES, CORNERS_FEATURES, FOULS_FEATURES, SHOTS_FEATURES, SOT_FEATURES, CARDS_FEATURES
 )
 from ..data.database import SessionLocal, Match, TeamElo
 
@@ -57,7 +57,7 @@ def _build_match_features(
         away_matches = _recent_matches(away_team)
 
         def _agg(matches, team, side):
-            gf, ga, stf, cf, ff = [], [], [], [], []
+            gf, ga, stf, cf, ff, hs, ast, hy, hr = [], [], [], [], [], [], [], [], []
             for m in matches:
                 is_home = m.home_team == team
                 if is_home:
@@ -66,12 +66,20 @@ def _build_match_features(
                     stf.append(m.hst or 0)
                     cf.append(m.hc or 0)
                     ff.append(m.hf or 0)
+                    hs.append(m.hs or 0)
+                    ast.append(m.hst or 0)
+                    hy.append(m.hy or 0)
+                    hr.append(m.hr or 0)
                 else:
                     gf.append(m.ftag or 0)
                     ga.append(m.fthg or 0)
                     stf.append(m.ast or 0)
                     cf.append(m.ac or 0)
                     ff.append(m.af or 0)
+                    hs.append(m.as_ or 0)
+                    ast.append(m.ast or 0)
+                    hy.append(m.ay or 0)
+                    hr.append(m.ar or 0)
 
             return {
                 f"{side}_Roll_GF": float(np.mean(gf)) if gf else 1.4,
@@ -81,6 +89,14 @@ def _build_match_features(
                 f"{side}_Roll_CA": float(np.mean(cf)) if cf else 4.8,
                 f"{side}_Roll_FF": float(np.mean(ff)) if ff else 12.0,
                 f"{side}_Roll_FA": float(np.mean(ff)) if ff else 12.0,
+                f"{side}_Roll_HS": float(np.mean(hs)) if hs else 13.0,
+                f"{side}_Roll_AS": float(np.mean(hs)) if hs else 11.0,
+                f"{side}_Roll_HST": float(np.mean(ast)) if ast else 5.0,
+                f"{side}_Roll_AST": float(np.mean(ast)) if ast else 4.0,
+                f"{side}_Roll_HY": float(np.mean(hy)) if hy else 1.9,
+                f"{side}_Roll_AY": float(np.mean(hy)) if hy else 2.1,
+                f"{side}_Roll_HR": float(np.mean(hr)) if hr else 0.08,
+                f"{side}_Roll_AR": float(np.mean(hr)) if hr else 0.10,
             }
 
         home_feats = _agg(home_matches, home_team, "Home")
@@ -93,6 +109,9 @@ def _build_match_features(
             "Home_ELO": home_elo,
             "Away_ELO": away_elo,
             "ELO_Diff": home_elo - away_elo,
+            "home_team": home_team,
+            "away_team": away_team,
+            "league": league,
             "Home_DaysRest": 7.0,
             "Away_DaysRest": 7.0,
             "Home_TravelFatigue": 1,
@@ -116,7 +135,7 @@ def predict_match(
 ) -> Dict:
     """
     Full prediction bundle for a single match.
-    Returns all 5 market predictions.
+    Returns outcome, goals, corners, fouls, cards, and shots market predictions.
     """
     home_feats, away_feats, meta = _build_match_features(
         home_team, away_team, league, match_date
@@ -159,6 +178,23 @@ def predict_match(
         fouls = {"exp_home_fouls": 12.0, "exp_away_fouls": 12.0, "exp_total_fouls": 24.0,
                  "prob_fouls_over_20": 0.60, "prob_fouls_over_25": 0.30, "prob_fouls_over_30": 0.10}
 
+    # 5. Cards
+    try:
+        cards = cards_model.predict(home_feats, away_feats, meta)
+    except Exception as e:
+        print(f"[Registry] Cards model error: {e}")
+        cards = {"exp_total_yellows": 4.0, "exp_total_reds": 0.18, "exp_total_cards": 4.36,
+                 "prob_over_3_5": 0.62, "prob_over_4_5": 0.44, "prob_over_5_5": 0.26}
+
+    # 6. Shots & SOT
+    try:
+        shots = shots_model.predict(home_feats, away_feats, meta)
+    except Exception as e:
+        print(f"[Registry] Shots model error: {e}")
+        shots = {"exp_total_shots": 24.7, "exp_total_sot": 9.3,
+                 "prob_over_22_5_shots": 0.65, "prob_over_24_5_shots": 0.51, "prob_over_26_5_shots": 0.35,
+                 "prob_over_7_5_sot": 0.71, "prob_over_8_5_sot": 0.58, "prob_over_9_5_sot": 0.44}
+
     return {
         "home_team": home_team,
         "away_team": away_team,
@@ -168,6 +204,8 @@ def predict_match(
         "goals": goals,
         "corners": corners,
         "fouls": fouls,
+        "cards": cards,
+        "shots": shots,
         "meta": {
             "home_elo": meta.get("Home_ELO"),
             "away_elo": meta.get("Away_ELO"),

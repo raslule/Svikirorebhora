@@ -94,21 +94,35 @@ def add_ghost_game_flag(df: pd.DataFrame) -> pd.DataFrame:
 def add_rolling_form(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
     df = df.sort_values("date").reset_index(drop=True)
 
-    home_df = df[["date", "home_team", "fthg", "ftag", "hst", "ast", "hc", "ac", "hf", "af"]].copy()
-    home_df.columns = ["date", "Team", "GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]
+    cols_home = ["date", "home_team", "fthg", "ftag", "hst", "ast", "hc", "ac", "hf", "af"]
+    cols_away = ["date", "away_team", "ftag", "fthg", "ast", "hst", "ac", "hc", "af", "hf"]
+    base_cols = ["GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]
 
-    away_df = df[["date", "away_team", "ftag", "fthg", "ast", "hst", "ac", "hc", "af", "hf"]].copy()
-    away_df.columns = ["date", "Team", "GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]
+    if "hs" in df.columns:
+        cols_home.extend(["hs", "as_"])
+        cols_away.extend(["as_", "hs"])
+        base_cols.extend(["HS", "AS"])
+
+    if "hy" in df.columns:
+        cols_home.extend(["hy", "ay", "hr", "ar"])
+        cols_away.extend(["ay", "hy", "ar", "hr"])
+        base_cols.extend(["HY", "AY", "HR", "AR"])
+
+    home_df = df[cols_home].copy()
+    home_df.columns = ["date", "Team"] + base_cols
+
+    away_df = df[cols_away].copy()
+    away_df.columns = ["date", "Team"] + base_cols
 
     all_games = pd.concat([home_df, away_df]).sort_values(["Team", "date"])
 
-    for col in ["GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]:
+    for col in base_cols:
         all_games[f"Roll_{col}"] = (
             all_games.groupby("Team")[col]
             .transform(lambda x: x.shift(1).rolling(window, min_periods=1).mean())
         )
 
-    roll_cols = [f"Roll_{c}" for c in ["GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]]
+    roll_cols = [f"Roll_{c}" for c in base_cols]
 
     # Merge Home
     df = pd.merge(
@@ -232,4 +246,22 @@ FOULS_FEATURES = [
     "Home_DaysRest", "Away_DaysRest",
     "Home_ELO", "Away_ELO",
     "is_ghost_game",
+]
+
+SHOTS_FEATURES = [
+    "Home_Roll_HS", "Away_Roll_AS",
+    "Home_Roll_HST", "Away_Roll_AST",
+    "ELO_Diff",
+]
+
+SOT_FEATURES = [
+    "Home_Roll_HST", "Away_Roll_AST",
+    "Home_Roll_STF", "Away_Roll_STF",
+    "ELO_Diff",
+]
+
+CARDS_FEATURES = [
+    "Home_Roll_HY", "Away_Roll_AY",
+    "Home_Roll_FF", "Away_Roll_FA",
+    "ref_strictness",
 ]

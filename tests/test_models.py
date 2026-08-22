@@ -75,6 +75,27 @@ class TestOutcomeModel:
         assert ece > 0.025, f"ECE should exceed ceiling, got {ece}"
 
 
+class TestCardsModel:
+    def test_cards_predict_returns_valid_dict(self):
+        from backend.models import cards_model
+        res = cards_model.predict({}, {}, {})
+        assert "exp_total_cards" in res
+        assert "prob_over_4_5" in res
+        assert res["exp_total_cards"] > 0
+        assert 0 <= res["prob_over_4_5"] <= 1.0
+
+
+class TestShotsModel:
+    def test_shots_predict_returns_valid_dict(self):
+        from backend.models import shots_model
+        res = shots_model.predict({}, {}, {})
+        assert "exp_total_shots" in res
+        assert "exp_total_sot" in res
+        assert "prob_over_24_5_shots" in res
+        assert res["exp_total_shots"] > 0
+        assert 0 <= res["prob_over_24_5_shots"] <= 1.0
+
+
 # ─── Goals Model ──────────────────────────────────────────────────────────────
 class TestGoalsModel:
     def test_elo_fallback_predict(self):
