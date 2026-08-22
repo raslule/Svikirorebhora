@@ -108,7 +108,6 @@ class TestBetRoutes:
         data = resp.json()
         assert data["market"] == "1X2"
         assert data["result"] is None  # pending
-        return data["id"]
 
     def test_list_bets(self, client, auth_headers):
         resp = client.get("/api/bets", headers=auth_headers)

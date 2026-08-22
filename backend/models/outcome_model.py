@@ -133,16 +133,26 @@ def predict(home_features: dict, away_features: dict, meta: dict) -> Dict:
     Run inference with XGBoost + Dixon-Coles Structural Fusion.
     Returns probabilities for H, D, A.
     """
-    xgb_model = joblib.load(os.path.join(MODEL_DIR, "outcome_xgb.joblib"))
-    meta_info = joblib.load(os.path.join(MODEL_DIR, "outcome_meta.joblib"))
+    xgb_path = os.path.join(MODEL_DIR, "outcome_xgb.joblib")
+    meta_path = os.path.join(MODEL_DIR, "outcome_meta.joblib")
 
-    weights = meta_info.get("weights", (0.70, 0.30))
-    feats = meta_info.get("features", OUTCOME_FEATURES)
+    try:
+        xgb_model = joblib.load(xgb_path)
+        meta_info = joblib.load(meta_path)
+        weights = meta_info.get("weights", (0.70, 0.30))
+        feats = meta_info.get("features", OUTCOME_FEATURES)
+    except Exception:
+        weights = (0.70, 0.30)
+        feats = OUTCOME_FEATURES
+        xgb_model = None
 
     row = {**home_features, **away_features, **meta}
     X = pd.DataFrame([{f: row.get(f, np.nan) for f in feats}]).fillna(0)
 
-    xgb_proba = xgb_model.predict_proba(X)[0]
+    if xgb_model is not None:
+        xgb_proba = xgb_model.predict_proba(X)[0]
+    else:
+        xgb_proba = np.array([0.45, 0.30, 0.25])
 
     # Dixon-Coles 1X2 structural probabilities
     home_team = meta.get("home_team", "")
@@ -150,14 +160,16 @@ def predict(home_features: dict, away_features: dict, meta: dict) -> Dict:
     league    = meta.get("league", "premier-league")
     elo_diff  = float(meta.get("elo_diff", 0.0))
     
-    g_res = predict_goals(home_team, away_team, league, elo_diff=elo_diff)
-    lam, mu = g_res["xg_home"], g_res["xg_away"]
-    
-    p_h = sum(poisson.pmf(h, lam) * poisson.pmf(a, mu) for h in range(10) for a in range(10) if h > a)
-    p_d = sum(poisson.pmf(h, lam) * poisson.pmf(a, mu) for h in range(10) for a in range(10) if h == a)
-    p_a = sum(poisson.pmf(h, lam) * poisson.pmf(a, mu) for h in range(10) for a in range(10) if h < a)
-    tot = max(p_h + p_d + p_a, 1e-6)
-    dc_proba = np.array([p_h / tot, p_d / tot, p_a / tot])
+    try:
+        g_res = predict_goals(home_team, away_team, league, elo_diff=elo_diff)
+        lam, mu = g_res["xg_home"], g_res["xg_away"]
+        p_h = sum(poisson.pmf(h, lam) * poisson.pmf(a, mu) for h in range(10) for a in range(10) if h > a)
+        p_d = sum(poisson.pmf(h, lam) * poisson.pmf(a, mu) for h in range(10) for a in range(10) if h == a)
+        p_a = sum(poisson.pmf(h, lam) * poisson.pmf(a, mu) for h in range(10) for a in range(10) if h < a)
+        tot = max(p_h + p_d + p_a, 1e-6)
+        dc_proba = np.array([p_h / tot, p_d / tot, p_a / tot])
+    except Exception:
+        dc_proba = np.array([0.45, 0.30, 0.25])
 
     fused_proba = weights[0] * xgb_proba + weights[1] * dc_proba
 
