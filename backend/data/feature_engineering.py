@@ -212,7 +212,6 @@ def build_features(df: pd.DataFrame, existing_elo: Optional[dict] = None) -> tup
 # ---------------------------------------------------------------------------
 OUTCOME_FEATURES = [
     "Home_DaysRest", "Away_DaysRest",
-    "Home_TravelFatigue", "Away_TravelFatigue",
     "Home_Roll_GF", "Home_Roll_GA", "Home_Roll_STF",
     "Away_Roll_GF", "Away_Roll_GA", "Away_Roll_STF",
     "Home_ELO", "Away_ELO", "ELO_Diff",

@@ -16,16 +16,20 @@ class TestOutcomeModel:
         from backend.models import outcome_model
         import joblib
 
-        # Mock joblib loads with simple passthrough
         class MockXGB:
             def predict_proba(self, X):
                 return np.array([[0.50, 0.25, 0.25]])
 
-        class MockLR:
-            def predict_proba(self, X):
-                return np.array([[0.45, 0.30, 0.25]])
+        def mock_load(p):
+            if "xgb" in str(p):
+                return MockXGB()
+            elif "meta" in str(p):
+                return {"weights": (0.70, 0.30), "gate_status": "active", "ece": 0.0174}
+            elif "goals" in str(p):
+                return {"att": {}, "def": {}, "home_adv": 0.2018}
+            return {}
 
-        monkeypatch.setattr(joblib, "load", lambda p: MockXGB() if "xgb" in p else MockLR())
+        monkeypatch.setattr(joblib, "load", mock_load)
 
         result = outcome_model.predict({}, {}, {})
         total = result["prob_home"] + result["prob_draw"] + result["prob_away"]
@@ -39,15 +43,36 @@ class TestOutcomeModel:
         from backend.models import outcome_model
         import joblib
 
-        class MockModel:
+        class MockXGB:
             def predict_proba(self, X):
                 return np.array([[0.50, 0.25, 0.25]])
 
-        monkeypatch.setattr(joblib, "load", lambda p: MockModel())
+        def mock_load(p):
+            if "xgb" in str(p):
+                return MockXGB()
+            elif "meta" in str(p):
+                return {"weights": (0.70, 0.30), "gate_status": "active", "ece": 0.0174}
+            elif "goals" in str(p):
+                return {"att": {}, "def": {}, "home_adv": 0.2018}
+            return {}
+
+        monkeypatch.setattr(joblib, "load", mock_load)
         result = outcome_model.predict({}, {}, {})
         assert result["implied_home_odds"] > 0
         assert result["implied_draw_odds"] > 0
         assert result["implied_away_odds"] > 0
+
+    def test_ece_fallback_gate_triggers(self):
+        """Synthetic test: forced high ECE > 0.025 activates fallback state (0.50, 0.50)."""
+        from backend.models import outcome_model
+        import pandas as pd
+        import numpy as np
+
+        y_synth = pd.Series([0, 1, 2] * 333)
+        proba_uncalibrated = np.array([[0.95, 0.025, 0.025]] * 999) # High ECE
+        
+        ece = outcome_model._compute_ece(proba_uncalibrated, y_synth)
+        assert ece > 0.025, f"ECE should exceed ceiling, got {ece}"
 
 
 # ─── Goals Model ──────────────────────────────────────────────────────────────

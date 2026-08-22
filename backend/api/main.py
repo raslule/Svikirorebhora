@@ -138,6 +138,19 @@ def get_models_info():
             pass
 
     outcome_meta = get_artifact_meta("outcome_xgb.joblib")
+    outcome_arch = "XGBoost + Dixon-Coles (70/30 Fusion)"
+    if outcome_meta["exists"]:
+        try:
+            o_info = joblib.load(os.path.join(artifact_dir, "outcome_meta.joblib"))
+            weights = o_info.get("weights", (0.70, 0.30))
+            gate = o_info.get("gate_status", "active")
+            w_xgb = int(round(weights[0] * 100))
+            w_dc = int(round(weights[1] * 100))
+            outcome_arch = f"XGBoost + Dixon-Coles ({w_xgb}/{w_dc} {gate.capitalize()})"
+            outcome_meta.update(o_info)
+        except Exception:
+            pass
+
     corners_meta = get_artifact_meta("corners_home.joblib")
     fouls_meta = get_artifact_meta("fouls_home.joblib")
 
@@ -146,7 +159,7 @@ def get_models_info():
             {
                 "id": "outcome",
                 "name": "1X2 Outcome",
-                "architecture": "XGBoost + Logistic Regression (60/40 Ensemble)",
+                "architecture": outcome_arch,
                 "target": "Brier Score < 0.22",
                 "badge": "badge-teal",
                 "artifact": outcome_meta
