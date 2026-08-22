@@ -35,7 +35,8 @@ export const predictions = {
 export const matches = {
   results:   (p)     => api.get('/matches/results', { params: p }),
   upcoming:  (p)     => api.get('/matches/upcoming', { params: p }),
-  standings: (league)=> api.get('/matches/standings', { params: { league } }),
+  standings: (league, season = 'current') => api.get('/matches/standings', { params: { league, season } }),
+  seasons:   (league) => api.get('/matches/seasons', { params: { league } }),
 }
 
 export const bets = {
@@ -49,6 +50,27 @@ export const bets = {
 export const admin = {
   retrain:    ()     => api.post('/admin/retrain'),
   updateData: ()     => api.post('/admin/update-data'),
+  modelsInfo: ()     => api.get('/models/info'),
 }
+
+export const getTeamsByLeague = async (league) => {
+    try {
+        const response = await api.get(`/teams/${league}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching teams by league", error);
+        throw error;
+    }
+};
+
+export const getTeamAnalytics = async (teamName) => {
+    try {
+        const response = await api.get(`/teams/${teamName}/analytics`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching team analytics", error);
+        throw error;
+    }
+};
 
 export default api

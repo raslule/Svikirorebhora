@@ -1,10 +1,26 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { admin } from '../api'
 import toast from 'react-hot-toast'
 
 export default function BacktestReport() {
   const [running, setRunning] = useState(false)
   const [metrics, setMetrics] = useState(null)
+  const [modelInfo, setModelInfo] = useState([])
+
+  const fetchModelInfo = async () => {
+    try {
+      const { data } = await admin.modelsInfo()
+      if (data?.models) {
+        setModelInfo(data.models)
+      }
+    } catch {
+      // Fallback silent
+    }
+  }
+
+  useEffect(() => {
+    fetchModelInfo()
+  }, [])
 
   const runBacktest = async () => {
     setRunning(true)
@@ -12,6 +28,7 @@ export default function BacktestReport() {
       const { data } = await admin.retrain()
       setMetrics(data.metrics)
       toast.success('Backtest complete!')
+      await fetchModelInfo()
     } catch {
       toast.error('Backtest failed — ensure all data is seeded')
     } finally {
@@ -53,7 +70,7 @@ export default function BacktestReport() {
             </button>
           </div>
           <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-            ⚠️ Retraining on 45k+ matches may take 5-15 minutes. Data auto-updates every Monday 06:00 SAST.
+            ⚠️ Retraining triggers a full walk-forward backtest on 45k+ matches. Dixon-Coles optimization typically takes 1–3 minutes.
           </div>
         </div>
 
@@ -89,31 +106,55 @@ export default function BacktestReport() {
           )}
         </div>
 
-        {/* Model Architecture */}
+        {/* Model Architecture Overview (Dynamically rendered from backend GET /api/models/info) */}
         <div className="card">
           <div className="card-title" style={{ marginBottom: 20 }}>🧠 Model Architecture Overview</div>
-          {[
-            { name: '1X2 Outcome', model: 'XGBoost + Logistic Regression (60/40 Ensemble)', target: 'Brier Score < 0.19', metric: metrics?.outcome ? `${metrics.outcome.ensemble_brier?.toFixed(4)} Brier` : 'Run backtest', badge: 'badge-teal', pass: metrics?.outcome?.pass },
-            { name: 'xG & BTTS', model: 'Dixon-Coles Bivariate Poisson (MLE, L-BFGS-B)', target: 'BTTS Log-Loss', metric: metrics?.goals ? `${metrics.goals.btts_log_loss} LL` : 'Run backtest', badge: 'badge-purple', pass: null },
-            { name: 'Corners', model: 'Negative Binomial Regression + Ridge', target: 'MAE < 2.5 corners', metric: metrics?.corners?.home ? `${metrics.corners.home.mae?.toFixed(3)} MAE` : 'Run backtest', badge: 'badge-amber', pass: null },
-            { name: 'Fouls', model: 'Ridge Linear Regression + Referee Regime', target: 'R² > 0.4', metric: metrics?.fouls?.home ? `R²=${metrics.fouls.home.r2?.toFixed(3)}` : 'Run backtest', badge: 'badge-green', pass: null },
-          ].map(m => (
-            <div key={m.name} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ flex: '0 0 140px' }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{m.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{m.target}</div>
+          {(modelInfo.length > 0 ? modelInfo : [
+            { id: 'outcome', name: '1X2 Outcome', architecture: 'XGBoost + Logistic Regression (60/40 Ensemble)', target: 'Brier Score < 0.22', badge: 'badge-teal' },
+            { id: 'goals', name: 'xG & BTTS', architecture: 'Dixon-Coles Bivariate Poisson (MLE, L-BFGS-B)', target: 'BTTS Log-Loss', badge: 'badge-purple' },
+            { id: 'corners', name: 'Corners', architecture: 'Negative Binomial GLM', target: 'MAE < 2.5 corners', badge: 'badge-amber' },
+            { id: 'fouls', name: 'Fouls', architecture: 'Poisson Regression + Referee Regime', target: 'MAE < 3.0 fouls', badge: 'badge-green' },
+          ]).map(m => {
+            let metricText = 'Run backtest'
+            let pass = null
+            if (m.id === 'outcome' && metrics?.outcome) {
+              metricText = `${metrics.outcome.ensemble_brier?.toFixed(4)} Brier`
+              pass = metrics.outcome.pass
+            } else if (m.id === 'goals' && metrics?.goals) {
+              metricText = `${metrics.goals.btts_log_loss} LL`
+            } else if (m.id === 'corners' && metrics?.corners?.home) {
+              metricText = `${metrics.corners.home.mae?.toFixed(3)} MAE`
+            } else if (m.id === 'fouls' && metrics?.fouls?.home) {
+              metricText = `${metrics.fouls.home.r2?.toFixed(3)} R²`
+            }
+
+            return (
+              <div key={m.id || m.name} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ flex: '0 0 140px' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{m.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{m.target}</div>
+                </div>
+                <div style={{ flex: 1, fontSize: 13, color: 'var(--text-secondary)' }}>
+                  <div>{m.architecture}</div>
+                  {m.artifact?.last_modified && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Artifact updated: {new Date(m.artifact.last_modified).toLocaleString()}
+                      {m.artifact.home_adv !== undefined && ` · home_adv=${m.artifact.home_adv}, rho=${m.artifact.rho}, teams=${m.artifact.teams_count}`}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <span className={`card-badge ${m.badge}`}>{metricText}</span>
+                  {pass === true && <span style={{ marginLeft: 6 }}>✅</span>}
+                  {pass === false && <span style={{ marginLeft: 6 }}>❌</span>}
+                </div>
               </div>
-              <div style={{ flex: 1, fontSize: 13, color: 'var(--text-secondary)' }}>{m.model}</div>
-              <div>
-                <span className={`card-badge ${m.badge}`}>{m.metric}</span>
-                {m.pass === true && <span style={{ marginLeft: 6 }}>✅</span>}
-                {m.pass === false && <span style={{ marginLeft: 6 }}>❌</span>}
-              </div>
-            </div>
-          ))}
+            )
+          })}
 
           <div style={{ marginTop: 20, padding: '16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--text-secondary)' }}>
-            <strong>Data split:</strong> Train (2000–2022) · Validation (2023–2024) · Test (2025+) &nbsp;|&nbsp;
+            <strong>Outcome / Corners / Fouls data split:</strong> Train (2000–2022) · Validation (2023–2024) · Test (2025+) &nbsp;|&nbsp;
+            <strong>Dixon-Coles window:</strong> Full train split (≤2022), time-weighted by half-life=365 days — older matches receive exponentially lower weight &nbsp;|&nbsp;
             <strong>Data source:</strong> football-data.co.uk (free, no subscription) &nbsp;|&nbsp;
             <strong>Features:</strong> ELO, rolling form (5-match), rest days, referee strictness regime, ghost-game flag
           </div>

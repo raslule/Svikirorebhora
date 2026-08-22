@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { matches as matchesApi } from '../api'
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import toast from 'react-hot-toast'
 
 const LEAGUES = ['premier-league','la-liga','serie-a','ligue-1','bundesliga']
@@ -8,21 +8,32 @@ const LEAGUE_COLORS = { 'premier-league': '#6600FF', 'la-liga': '#FF4444', 'seri
 
 export default function LeagueInsights() {
   const [league, setLeague] = useState('premier-league')
+  const [season, setSeason] = useState('current')
+  const [availableSeasons, setAvailableSeasons] = useState([])
   const [results, setResults] = useState([])
   const [standings, setStandings] = useState([])
+  const [standingsStatus, setStandingsStatus] = useState('live')
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setSeason('current')
+    matchesApi.seasons(league).then(res => {
+      setAvailableSeasons(res.data)
+    }).catch(() => console.error("Failed to load seasons"))
+  }, [league])
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
-      matchesApi.results({ league, limit: 200 }),
-      matchesApi.standings(league),
+      matchesApi.results({ league, limit: 200, season }),
+      matchesApi.standings(league, season),
     ]).then(([r, s]) => {
       setResults(r.data)
-      setStandings(s.data)
+      setStandings(s.data.standings || [])
+      setStandingsStatus(s.data.status || 'live')
     }).catch(() => toast.error('Failed to load league data'))
     .finally(() => setLoading(false))
-  }, [league])
+  }, [league, season])
 
   // Derived stats
   const totalGoals = results.reduce((s, m) => s + (m.fthg || 0) + (m.ftag || 0), 0)
@@ -59,19 +70,27 @@ export default function LeagueInsights() {
       <div className="page-header">
         <h1 className="page-title">League Insights</h1>
         <p className="page-subtitle">Statistical analysis and trends from historical match data</p>
-        <div className="league-tabs" style={{ marginTop: 12 }}>
-          {LEAGUES.map(l => (
-            <button key={l} className={`league-tab${league === l ? ' active' : ''}`} data-league={l} onClick={() => setLeague(l)}>
-              {{ 'premier-league': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 EPL', 'la-liga': '🇪🇸 La Liga', 'serie-a': '🇮🇹 Serie A', 'ligue-1': '🇫🇷 Ligue 1', 'bundesliga': '🇩🇪 Bundesliga' }[l]}
-            </button>
-          ))}
+        <div className="league-tabs" style={{ marginTop: 12, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            {LEAGUES.map(l => (
+              <button key={l} className={`league-tab${league === l ? ' active' : ''}`} data-league={l} onClick={() => setLeague(l)}>
+                {{ 'premier-league': '🇬🇧 EPL', 'la-liga': '🇪🇸 La Liga', 'serie-a': '🇮🇹 Serie A', 'ligue-1': '🇫🇷 Ligue 1', 'bundesliga': '🇩🇪 Bundesliga' }[l]}
+              </button>
+            ))}
+          </div>
+          <select value={season} onChange={e => setSeason(e.target.value)} style={{ padding: '6px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: '6px', fontWeight: 600 }}>
+            <option value="current">Current Season</option>
+            {availableSeasons.map(s => (
+              <option key={s} value={s}>20{s.substring(0, 2)}/{s.substring(2, 4)}</option>
+            ))}
+          </select>
         </div>
       </div>
 
       <div className="page-body">
         {/* KPIs */}
         <div className="stat-grid mb-6">
-          <div className="stat-card"><div className="stat-label">Matches</div><div className="stat-value">{results.length}</div><div className="stat-sub">In current season DB</div></div>
+          <div className="stat-card"><div className="stat-label">Matches</div><div className="stat-value">{results.length}</div><div className="stat-sub">In selected season</div></div>
           <div className="stat-card amber"><div className="stat-label">Avg Goals</div><div className="stat-value">{avgGoals}</div><div className="stat-sub">Per match</div></div>
           <div className="stat-card green"><div className="stat-label">BTTS Rate</div><div className="stat-value">{bttsRate}%</div><div className="stat-sub">{btts} of {results.length} matches</div></div>
           <div className="stat-card"><div className="stat-label">Avg Corners</div><div className="stat-value">{avgCorners}</div><div className="stat-sub">Total per match</div></div>
@@ -93,10 +112,10 @@ export default function LeagueInsights() {
                   <Tooltip formatter={(v, n) => [v, 'Matches']} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }} />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                     {outcomeData.map((e, i) => (
-                      <Bar key={i} fill={e.fill} />
+                      <Cell key={`cell-${i}`} fill={e.fill} />
                     ))}
-                  </BarChart>
-                </ResponsiveContainer>
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 12 }}>
@@ -132,11 +151,13 @@ export default function LeagueInsights() {
         {/* Standings Table */}
         <div className="card">
           <div className="card-header">
-            <div className="card-title">🏆 League Standings (Current Season)</div>
-            <span className="card-badge badge-green">Live from DB</span>
+            <div className="card-title">🏆 League Standings</div>
+            {standingsStatus === 'live' && <span className="card-badge badge-green">LIVE FROM DB</span>}
+            {standingsStatus === 'not_started' && <span className="card-badge badge-gray">PRE-SEASON</span>}
+            {standingsStatus === 'final' && <span className="card-badge badge-blue" style={{ background: 'rgba(0,100,255,0.2)', color: '#4499ff', border: '1px solid rgba(0,100,255,0.3)' }}>FINAL</span>}
           </div>
           {standings.length === 0 ? (
-            <div className="empty-state"><div className="empty-state-icon">📋</div><div className="empty-state-title">No standings data</div><div className="empty-state-text">Seed the database with match data first</div></div>
+            <div className="empty-state"><div className="empty-state-icon">📋</div><div className="empty-state-title">No standings data</div><div className="empty-state-text">Awaiting season kickoff or DB sync</div></div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="data-table">
