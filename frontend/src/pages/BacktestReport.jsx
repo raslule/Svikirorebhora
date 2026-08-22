@@ -110,12 +110,14 @@ export default function BacktestReport() {
 
         {/* Model Architecture Overview (Dynamically rendered from backend GET /api/models/info) */}
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 20 }}>📊 Model Architecture Overview</div>
+          <div className="card-title" style={{ marginBottom: 20 }}>🧠 Model Architecture Overview</div>
           {(modelInfo.length > 0 ? modelInfo : [
-            { id: 'outcome', name: '1X2 Outcome', architecture: 'XGBoost + Logistic Regression (60/40 Ensemble)', target: 'Brier Score < 0.22', badge: 'badge-teal' },
+            { id: 'outcome', name: '1X2 Outcome', architecture: 'XGBoost + Dixon-Coles (70/30 Fusion)', target: 'Brier Score < 0.22', badge: 'badge-teal' },
             { id: 'goals', name: 'xG & BTTS', architecture: 'Dixon-Coles Bivariate Poisson (MLE, L-BFGS-B)', target: 'BTTS Log-Loss', badge: 'badge-purple' },
             { id: 'corners', name: 'Corners', architecture: 'Negative Binomial GLM', target: 'MAE < 2.5 corners', badge: 'badge-amber' },
             { id: 'fouls', name: 'Fouls', architecture: 'Poisson Regression + Referee Regime', target: 'MAE < 3.0 fouls', badge: 'badge-green' },
+            { id: 'cards', name: 'Cards', architecture: 'Poisson GLM + Referee Strictness Scaling', target: 'MAE < 1.5 cards', badge: 'badge-rose' },
+            { id: 'shots', name: 'Total Shots & SOT', architecture: 'Negative Binomial GLM + Dixon-Coles xG', target: 'MAE < 4.0 shots', badge: 'badge-cyan' },
           ]).map(m => {
             let metricText = 'Run backtest'
             let pass = null
@@ -128,6 +130,10 @@ export default function BacktestReport() {
               metricText = `${metrics.corners.home.mae?.toFixed(3)} MAE`
             } else if (m.id === 'fouls' && metrics?.fouls?.home) {
               metricText = `${metrics.fouls.home.mae?.toFixed(3)} MAE`
+            } else if (m.id === 'cards' && metrics?.cards) {
+              metricText = `${metrics.cards.mae_total_cards?.toFixed(3)} MAE`
+            } else if (m.id === 'shots' && metrics?.shots) {
+              metricText = `${metrics.shots.mae_total_shots?.toFixed(3)} MAE`
             }
 
             return (

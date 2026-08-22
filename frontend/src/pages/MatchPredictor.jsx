@@ -96,10 +96,12 @@ export default function MatchPredictor() {
             <div className="card" style={{ marginTop: 16 }}>
               <div className="card-title" style={{ marginBottom: 14 }}>🧠 Models Used</div>
               {[
-                { label: '1X2 Outcome', model: 'XGBoost + Logistic Ensemble', badge: 'badge-teal' },
+                { label: '1X2 Outcome', model: 'XGBoost + Dixon-Coles 70/30 Fusion', badge: 'badge-teal' },
                 { label: 'xG & BTTS', model: 'Dixon-Coles Bivariate Poisson', badge: 'badge-purple' },
-                { label: 'Corners', model: 'Negative Binomial Regression', badge: 'badge-amber' },
-                { label: 'Fouls', model: 'Ridge Linear Regression', badge: 'badge-green' },
+                { label: 'Corners', model: 'Negative Binomial GLM', badge: 'badge-amber' },
+                { label: 'Fouls', model: 'Poisson Regression + Referee Regime', badge: 'badge-green' },
+                { label: 'Cards', model: 'Poisson GLM + Referee Strictness', badge: 'badge-rose' },
+                { label: 'Total Shots & SOT', model: 'Negative Binomial GLM', badge: 'badge-cyan' },
               ].map(m => (
                 <div key={m.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</span>
