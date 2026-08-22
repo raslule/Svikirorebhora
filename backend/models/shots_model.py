@@ -15,7 +15,7 @@ MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts"
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 from ..data.feature_engineering import SHOTS_FEATURES, SOT_FEATURES
-from .goals_model import predict as predict_goals
+from .goals_model import get_expected_goals, predict as predict_goals
 
 
 class StatsmodelsNB:
@@ -49,21 +49,14 @@ def _prep_shots(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, pd.Series, p
 
 
 def _fast_xg_vectorized(df_subset: pd.DataFrame) -> Tuple[list, list]:
-    goals_arts = joblib.load(os.path.join(MODEL_DIR, "goals_dc.joblib"))
-    att, dfe, home_adv = goals_arts["att"], goals_arts["def"], goals_arts["home_adv"]
-    
     dc_home, dc_away = [], []
     for _, row in df_subset.iterrows():
         ht, at = str(row.get("home_team", "")), str(row.get("away_team", ""))
+        league = str(row.get("league", "premier-league"))
         elo_diff = float(row.get("ELO_Diff", 0.0))
-        if ht in att and at in dfe:
-            lam = np.exp(att[ht] + dfe[at] + home_adv)
-            mu  = np.exp(att[at] + dfe[ht])
-        else:
-            lam = 1.40 + elo_diff * 0.003
-            mu  = 1.10 - elo_diff * 0.003
-        dc_home.append(float(max(lam, 0.10)))
-        dc_away.append(float(max(mu, 0.10)))
+        lam, mu = get_expected_goals(ht, at, league, elo_diff=elo_diff)
+        dc_home.append(lam)
+        dc_away.append(mu)
     return dc_home, dc_away
 
 
@@ -81,7 +74,7 @@ def train(df: pd.DataFrame) -> Dict:
     X_s_tr, X_st_tr, y_hs_tr, y_as_tr, y_hst_tr, y_ast_tr = _prep_shots(train_df.dropna(subset=["hs"]))
     X_s_te, X_st_te, y_hs_te, y_as_te, y_hst_te, y_ast_te = _prep_shots(eval_df.dropna(subset=["hs"]))
 
-    # Single-source vectorized Dixon-Coles xG features
+    # Single-source Dixon-Coles xG features
     dc_home_tr, dc_away_tr = _fast_xg_vectorized(train_df.dropna(subset=["hs"]))
     dc_home_te, dc_away_te = _fast_xg_vectorized(eval_df.dropna(subset=["hs"]))
 
@@ -132,9 +125,9 @@ def predict(home_features: dict, away_features: dict, meta: dict) -> Dict:
     elo_diff  = float(meta.get("elo_diff", 0.0))
 
     try:
-        g_res = predict_goals(home_team, away_team, league, elo_diff=elo_diff)
-        row["xg_home"] = g_res["xg_home"]
-        row["xg_away"] = g_res["xg_away"]
+        lam, mu = get_expected_goals(home_team, away_team, league, elo_diff=elo_diff)
+        row["xg_home"] = lam
+        row["xg_away"] = mu
     except Exception:
         row["xg_home"] = 1.45
         row["xg_away"] = 1.15

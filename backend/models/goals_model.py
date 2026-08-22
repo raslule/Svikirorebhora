@@ -11,7 +11,7 @@ import os
 from scipy.optimize import minimize
 from scipy.stats import poisson
 from scipy.special import gammaln
-from typing import Dict, Optional
+from typing import Dict, Tuple, Optional
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts")
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -169,8 +169,8 @@ def _load_model_artifacts():
             _GOALS_MODEL_CACHE = None
     return _GOALS_MODEL_CACHE
 
-def predict(home_team: str, away_team: str, league: str, elo_diff: float = 0.0) -> Dict:
-    """Predict xG, BTTS, Over/Under from Dixon-Coles parameters."""
+def get_expected_goals(home_team: str, away_team: str, league: str, elo_diff: float = 0.0) -> Tuple[float, float]:
+    """Single authoritative source of truth for Dixon-Coles xG (home & away)."""
     arts = _load_model_artifacts()
 
     base_h = LEAGUE_HOME_BASE.get(league, 1.40)
@@ -180,17 +180,25 @@ def predict(home_team: str, away_team: str, league: str, elo_diff: float = 0.0) 
         att = arts["att"]
         dfe = arts["def"]
         home_adv = arts["home_adv"]
-        rho = arts["rho"]
         lam = np.exp(att[home_team] + dfe[away_team] + home_adv)
         mu  = np.exp(att[away_team] + dfe[home_team])
     else:
         # ELO fallback: xG = base + ELO_diff * 0.003
         lam = base_h + elo_diff * 0.003
         mu  = base_a - elo_diff * 0.003
-        rho = -0.1
 
     lam = max(float(lam), 0.10)
     mu  = max(float(mu),  0.10)
+
+    return lam, mu
+
+
+def predict(home_team: str, away_team: str, league: str, elo_diff: float = 0.0) -> Dict:
+    """Predict xG, BTTS, Over/Under from Dixon-Coles parameters."""
+    arts = _load_model_artifacts()
+    rho = arts.get("rho", -0.1) if arts else -0.1
+
+    lam, mu = get_expected_goals(home_team, away_team, league, elo_diff)
 
     probs = _score_probs(lam, mu, rho)
 
@@ -199,9 +207,9 @@ def predict(home_team: str, away_team: str, league: str, elo_diff: float = 0.0) 
     prob_over35 = float(sum(probs[h, a] for h in range(10) for a in range(10) if h + a > 3))
 
     return {
-        "xg_home":       round(lam, 3),
-        "xg_away":       round(mu, 3),
-        "prob_btts":     round(prob_btts, 4),
+        "xg_home": round(lam, 2),
+        "xg_away": round(mu, 2),
+        "prob_btts": round(prob_btts, 4),
         "prob_over_2_5": round(prob_over25, 4),
         "prob_over_3_5": round(prob_over35, 4),
         "implied_btts_yes_odds":  round(1 / prob_btts, 2) if prob_btts > 0 else 99,
