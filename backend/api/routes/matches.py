@@ -79,6 +79,14 @@ def get_results(
             "ac": m.ac,
             "hf": m.hf,
             "af": m.af,
+            "hy": m.hy,
+            "ay": m.ay,
+            "hr": m.hr,
+            "ar": m.ar,
+            "hs": m.hs,
+            "as_": m.as_,
+            "hst": m.hst,
+            "ast": m.ast,
         }
         for m in matches
     ]
