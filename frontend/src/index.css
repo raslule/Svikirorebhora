@@ -451,6 +451,12 @@ input, select, textarea { font-family: var(--font); }
 .pred-bar-fill.over  { background: linear-gradient(90deg, var(--purple), #7000FF); }
 .pred-bar-fill.corner{ background: linear-gradient(90deg, #00BFFF, #0070FF); }
 .pred-bar-fill.foul  { background: linear-gradient(90deg, #FF9500, #FF5500); }
+.pred-bar-fill.card  { background: linear-gradient(90deg, #FF2D55, #FF5E3A); }
+.pred-bar-fill.shot  { background: linear-gradient(90deg, #00C7BE, #30B0C7); }
+
+.text-rose   { color: #FF2D55; }
+.text-cyan   { color: #00C7BE; }
+.text-purple { color: #AF52DE; }
 
 .pred-pct {
   font-size: 12px;

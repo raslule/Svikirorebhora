@@ -4,11 +4,11 @@ import { bets as betsApi } from '../api'
 import toast from 'react-hot-toast'
 
 const LEAGUE_LABELS = {
-  'premier-league': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 EPL',
-  'la-liga':        '🇪🇸 La Liga',
-  'serie-a':        '🇮🇹 Serie A',
-  'ligue-1':        '🇫🇷 Ligue 1',
-  'bundesliga':     '🇩🇪 Bundesliga',
+  'premier-league': 'EPL',
+  'la-liga':        'La Liga',
+  'serie-a':        'Serie A',
+  'ligue-1':        'Ligue 1',
+  'bundesliga':     'Bundesliga',
 }
 
 function ProbBar({ label, pct, type, odds }) {
@@ -16,9 +16,9 @@ function ProbBar({ label, pct, type, odds }) {
     <div className="prediction-row">
       <div className="pred-label">{label}</div>
       <div className="pred-bar-track">
-        <div className={`pred-bar-fill ${type}`} style={{ width: `${Math.round(pct * 100)}%` }} />
+        <div className={`pred-bar-fill ${type}`} style={{ width: `${Math.round((pct || 0) * 100)}%` }} />
       </div>
-      <div className="pred-pct">{(pct * 100).toFixed(0)}%</div>
+      <div className="pred-pct">{((pct || 0) * 100).toFixed(0)}%</div>
       {odds && <div className="pred-odds">{odds}x</div>}
     </div>
   )
@@ -31,13 +31,14 @@ function QuickBetModal({ fixture, onClose }) {
   const [stake, setStake] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const MARKETS = ['1X2', 'BTTS Yes', 'BTTS No', 'Over 2.5', 'Over 3.5', 'Under 2.5', 'Corners O9.5', 'Corners O10.5', 'Fouls O20', 'Fouls O25']
+  const MARKETS = ['1X2', 'BTTS Yes', 'BTTS No', 'Over 2.5', 'Over 3.5', 'Under 2.5', 'Corners O9.5', 'Corners O10.5', 'Fouls O20', 'Fouls O25', 'Cards O4.5', 'Shots O24.5']
   const SELECTIONS_MAP = {
     '1X2': ['Home', 'Draw', 'Away'],
     'BTTS Yes': ['Yes'], 'BTTS No': ['No'],
     'Over 2.5': ['Over'], 'Over 3.5': ['Over'], 'Under 2.5': ['Under'],
     'Corners O9.5': ['Over', 'Under'], 'Corners O10.5': ['Over', 'Under'],
     'Fouls O20': ['Over', 'Under'], 'Fouls O25': ['Over', 'Under'],
+    'Cards O4.5': ['Over', 'Under'], 'Shots O24.5': ['Over', 'Under'],
   }
 
   const save = async () => {
@@ -53,7 +54,7 @@ function QuickBetModal({ fixture, onClose }) {
         odds: parseFloat(odds),
         stake: parseFloat(stake),
       })
-      toast.success('Bet logged! 🎉')
+      toast.success('Bet logged! 💰')
       onClose()
     } catch {
       toast.error('Failed to save bet')
@@ -168,13 +169,13 @@ export default function PredictionPanel({ fixture, prediction, loading }) {
             <div className="xg-display">
               <div className="xg-team">
                 <div className="xg-val home">{prediction.goals.xg_home?.toFixed(2)}</div>
-                <div className="xg-lbl">xG Home</div>
+                <div className="xg-lbl">XG HOME</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{fixture.home_team}</div>
               </div>
               <div className="xg-sep">—</div>
               <div className="xg-team">
                 <div className="xg-val away">{prediction.goals.xg_away?.toFixed(2)}</div>
-                <div className="xg-lbl">xG Away</div>
+                <div className="xg-lbl">XG AWAY</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{fixture.away_team}</div>
               </div>
             </div>
@@ -182,9 +183,9 @@ export default function PredictionPanel({ fixture, prediction, loading }) {
 
           {/* Tabs */}
           <div className="tab-bar" style={{ marginTop: 16 }}>
-            {['outcome','goals','corners','fouls'].map(t => (
+            {['outcome','goals','corners','fouls','cards','shots'].map(t => (
               <button key={t} className={`tab-item${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
-                {{ outcome: '1X2', goals: 'Goals', corners: 'Corners', fouls: 'Fouls' }[t]}
+                {{ outcome: '1X2', goals: 'Goals', corners: 'Corners', fouls: 'Fouls', cards: 'Cards', shots: 'Shots' }[t]}
               </button>
             ))}
           </div>
@@ -227,6 +228,38 @@ export default function PredictionPanel({ fixture, prediction, loading }) {
                 <ProbBar label="Over 20" pct={prediction.fouls.prob_fouls_over_20} type="foul" />
                 <ProbBar label="Over 25" pct={prediction.fouls.prob_fouls_over_25} type="foul" />
                 <ProbBar label="Over 30" pct={prediction.fouls.prob_fouls_over_30} type="foul" />
+              </>
+            )}
+
+            {activeTab === 'cards' && prediction.cards && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 13 }}>
+                  <span className="text-secondary">Exp. Cards: <strong className="text-rose">{prediction.cards.exp_total_cards?.toFixed(1)}</strong></span>
+                  <span className="text-secondary">Yellows: <strong>{prediction.cards.exp_total_yellows?.toFixed(1)}</strong> · Reds: <strong>{prediction.cards.exp_total_reds?.toFixed(2)}</strong></span>
+                </div>
+                <ProbBar label="Over 3.5 Cards" pct={prediction.cards.prob_over_3_5} type="card" />
+                <ProbBar label="Over 4.5 Cards" pct={prediction.cards.prob_over_4_5} type="card" />
+                <ProbBar label="Over 5.5 Cards" pct={prediction.cards.prob_over_5_5} type="card" />
+              </>
+            )}
+
+            {activeTab === 'shots' && prediction.shots && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13 }}>
+                  <span className="text-secondary">Exp. Shots: <strong className="text-cyan">{prediction.shots.exp_total_shots?.toFixed(1)}</strong></span>
+                  <span className="text-secondary">Home: <strong>{prediction.shots.exp_home_shots?.toFixed(1)}</strong> · Away: <strong>{prediction.shots.exp_away_shots?.toFixed(1)}</strong></span>
+                </div>
+                <ProbBar label="Over 22.5 Shots" pct={prediction.shots.prob_over_22_5_shots} type="shot" />
+                <ProbBar label="Over 24.5 Shots" pct={prediction.shots.prob_over_24_5_shots} type="shot" />
+                <ProbBar label="Over 26.5 Shots" pct={prediction.shots.prob_over_26_5_shots} type="shot" />
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, marginBottom: 8, fontSize: 13 }}>
+                  <span className="text-secondary">Exp. SOT: <strong className="text-purple">{prediction.shots.exp_total_sot?.toFixed(1)}</strong></span>
+                  <span className="text-secondary">Home: <strong>{prediction.shots.exp_home_sot?.toFixed(1)}</strong> · Away: <strong>{prediction.shots.exp_away_sot?.toFixed(1)}</strong></span>
+                </div>
+                <ProbBar label="Over 7.5 SOT" pct={prediction.shots.prob_over_7_5_sot} type="shot" />
+                <ProbBar label="Over 8.5 SOT" pct={prediction.shots.prob_over_8_5_sot} type="shot" />
+                <ProbBar label="Over 9.5 SOT" pct={prediction.shots.prob_over_9_5_sot} type="shot" />
               </>
             )}
           </div>
