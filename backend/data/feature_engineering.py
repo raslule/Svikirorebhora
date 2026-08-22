@@ -21,7 +21,7 @@ def calculate_elo(df: pd.DataFrame, k: float = 20.0, home_adv: float = 100.0) ->
     Returns df with 'Home_ELO' and 'Away_ELO' columns added.
     Insight from notebook: 100 ELO diff ≈ 0.5 goal difference.
     """
-    df = df.sort_values("Date").reset_index(drop=True)
+    df = df.sort_values("date").reset_index(drop=True)
     teams = pd.concat([df["home_team"], df["away_team"]]).unique()
     elo_dict = {t: 1500.0 for t in teams}
 
@@ -64,7 +64,7 @@ def calculate_elo(df: pd.DataFrame, k: float = 20.0, home_adv: float = 100.0) ->
 # ---------------------------------------------------------------------------
 def add_referee_regime(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    year = pd.to_datetime(df["Date"]).dt.year
+    year = pd.to_datetime(df["date"]).dt.year
     conditions = [
         year < 2008,
         (year >= 2008) & (year < 2017),
@@ -80,7 +80,7 @@ def add_referee_regime(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 def add_ghost_game_flag(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    date = pd.to_datetime(df["Date"])
+    date = pd.to_datetime(df["date"])
     df["is_ghost_game"] = (
         (date >= "2020-03-01") & (date <= "2021-05-31")
     ).astype(int)
@@ -92,15 +92,15 @@ def add_ghost_game_flag(df: pd.DataFrame) -> pd.DataFrame:
 # Insight from notebook: rolling GF, GA, STF critical for XGBoost
 # ---------------------------------------------------------------------------
 def add_rolling_form(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
-    df = df.sort_values("Date").reset_index(drop=True)
+    df = df.sort_values("date").reset_index(drop=True)
 
-    home_df = df[["Date", "home_team", "fthg", "ftag", "hst", "ast", "hc", "ac", "hf", "af"]].copy()
-    home_df.columns = ["Date", "Team", "GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]
+    home_df = df[["date", "home_team", "fthg", "ftag", "hst", "ast", "hc", "ac", "hf", "af"]].copy()
+    home_df.columns = ["date", "Team", "GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]
 
-    away_df = df[["Date", "away_team", "ftag", "fthg", "ast", "hst", "ac", "hc", "af", "hf"]].copy()
-    away_df.columns = ["Date", "Team", "GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]
+    away_df = df[["date", "away_team", "ftag", "fthg", "ast", "hst", "ac", "hc", "af", "hf"]].copy()
+    away_df.columns = ["date", "Team", "GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]
 
-    all_games = pd.concat([home_df, away_df]).sort_values(["Team", "Date"])
+    all_games = pd.concat([home_df, away_df]).sort_values(["Team", "date"])
 
     for col in ["GF", "GA", "STF", "STA", "CF", "CA", "FF", "FA"]:
         all_games[f"Roll_{col}"] = (
@@ -113,9 +113,9 @@ def add_rolling_form(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
     # Merge Home
     df = pd.merge(
         df,
-        all_games[["Date", "Team"] + roll_cols],
-        left_on=["Date", "home_team"],
-        right_on=["Date", "Team"],
+        all_games[["date", "Team"] + roll_cols],
+        left_on=["date", "home_team"],
+        right_on=["date", "Team"],
         how="left",
     ).drop(columns=["Team"])
     df.rename(columns={c: f"Home_{c}" for c in roll_cols}, inplace=True)
@@ -123,9 +123,9 @@ def add_rolling_form(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
     # Merge Away
     df = pd.merge(
         df,
-        all_games[["Date", "Team"] + roll_cols],
-        left_on=["Date", "away_team"],
-        right_on=["Date", "Team"],
+        all_games[["date", "Team"] + roll_cols],
+        left_on=["date", "away_team"],
+        right_on=["date", "Team"],
         how="left",
     ).drop(columns=["Team"])
     df.rename(columns={c: f"Away_{c}" for c in roll_cols}, inplace=True)
@@ -137,27 +137,27 @@ def add_rolling_form(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
 # Rest Days & Travel Fatigue (from notebook insight)
 # ---------------------------------------------------------------------------
 def add_rest_and_fatigue(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.sort_values("Date").reset_index(drop=True)
+    df = df.sort_values("date").reset_index(drop=True)
 
     all_games = []
-    for side, team_col, date_col in [("Home", "home_team", "Date"), ("Away", "away_team", "Date")]:
+    for side, team_col, date_col in [("Home", "home_team", "date"), ("Away", "away_team", "date")]:
         g = df[[date_col, team_col]].copy()
-        g.columns = ["Date", "Team"]
+        g.columns = ["date", "Team"]
         g["Side"] = side
         all_games.append(g)
 
-    schedule = pd.concat(all_games).sort_values(["Team", "Date"])
-    schedule["DaysRest"] = schedule.groupby("Team")["Date"].diff().dt.days.fillna(7)
+    schedule = pd.concat(all_games).sort_values(["Team", "date"])
+    schedule["DaysRest"] = schedule.groupby("Team")["date"].diff().dt.days.fillna(7)
     schedule["DaysRest"] = schedule["DaysRest"].clip(upper=30)
 
     # Merge rest days back
-    home_rest = schedule[schedule["Side"] == "Home"][["Date", "Team", "DaysRest"]].copy()
-    away_rest = schedule[schedule["Side"] == "Away"][["Date", "Team", "DaysRest"]].copy()
+    home_rest = schedule[schedule["Side"] == "Home"][["date", "Team", "DaysRest"]].copy()
+    away_rest = schedule[schedule["Side"] == "Away"][["date", "Team", "DaysRest"]].copy()
 
-    df = pd.merge(df, home_rest, left_on=["Date", "home_team"], right_on=["Date", "Team"], how="left").drop("Team", axis=1)
+    df = pd.merge(df, home_rest, left_on=["date", "home_team"], right_on=["date", "Team"], how="left").drop("Team", axis=1)
     df.rename(columns={"DaysRest": "Home_DaysRest"}, inplace=True)
 
-    df = pd.merge(df, away_rest, left_on=["Date", "away_team"], right_on=["Date", "Team"], how="left").drop("Team", axis=1)
+    df = pd.merge(df, away_rest, left_on=["date", "away_team"], right_on=["date", "Team"], how="left").drop("Team", axis=1)
     df.rename(columns={"DaysRest": "Away_DaysRest"}, inplace=True)
 
     # Travel fatigue: home team always plays at home (flag=1 means home advantage active)

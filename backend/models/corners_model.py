@@ -9,7 +9,8 @@ import joblib
 import os
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import Ridge
+from sklearn.base import BaseEstimator, RegressorMixin
+import statsmodels.api as sm
 from scipy.stats import nbinom
 from typing import Dict
 
@@ -18,6 +19,25 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 from ..data.feature_engineering import CORNERS_FEATURES
 
+class StatsmodelsNB(BaseEstimator, RegressorMixin):
+    def fit(self, X, y):
+        # 1. Fit Poisson to get Pearson residuals
+        X_const = sm.add_constant(X, has_constant='add')
+        poisson_model = sm.GLM(y, X_const, family=sm.families.Poisson()).fit()
+        
+        # 2. Compute alpha
+        # statsmodels NB variance is mu + alpha * mu^2
+        mu = poisson_model.predict(X_const)
+        dispersion_factor = poisson_model.pearson_chi2 / poisson_model.df_resid
+        self.alpha_ = max((dispersion_factor - 1) / np.mean(mu), 0.01)
+        
+        # 3. Fit NB
+        self.model_ = sm.GLM(y, X_const, family=sm.families.NegativeBinomial(alpha=self.alpha_)).fit()
+        return self
+        
+    def predict(self, X):
+        X_const = sm.add_constant(X, has_constant='add')
+        return self.model_.predict(X_const)
 
 def _nb_predict_proba(mu: float, dispersion: float, k_values: list) -> dict:
     """
@@ -36,13 +56,16 @@ def _nb_predict_proba(mu: float, dispersion: float, k_values: list) -> dict:
 
 def train(df: pd.DataFrame) -> Dict:
     """Train separate NB regressors for home and away corners."""
-    df = df.sort_values("Date").reset_index(drop=True)
-    df["Year"] = pd.to_datetime(df["Date"]).dt.year
+    df = df.sort_values("date").reset_index(drop=True)
+    df["Year"] = pd.to_datetime(df["date"]).dt.year
     df = df.dropna(subset=["hc", "ac"]).copy()
 
     avail = [f for f in CORNERS_FEATURES if f in df.columns]
     train_df = df[df["Year"] <= 2023]
     test_df  = df[df["Year"] >= 2025]
+    # Fall back to 2024 data if 2025 test set is too small
+    if len(test_df.dropna(subset=["hc","ac"])) < 10:
+        test_df = df[df["Year"] == 2024]
 
     X_train = train_df[avail].fillna(0)
     X_test  = test_df[avail].fillna(0)
@@ -54,7 +77,7 @@ def train(df: pd.DataFrame) -> Dict:
 
         pipe = Pipeline([
             ("scaler", StandardScaler()),
-            ("model", Ridge(alpha=1.0)),
+            ("model", StatsmodelsNB()),
         ])
         pipe.fit(X_train, y_train)
 
@@ -64,11 +87,10 @@ def train(df: pd.DataFrame) -> Dict:
 
         joblib.dump(pipe, os.path.join(MODEL_DIR, f"corners_{target}.joblib"))
 
-        # Estimate overdispersion from training residuals
-        train_preds = pipe.predict(X_train)
-        residuals = y_train.values - train_preds
-        dispersion = max(np.var(residuals) / max(np.mean(y_train), 0.1), 0.05)
-        joblib.dump({"dispersion": dispersion, "mean_corners": float(y_train.mean())},
+        # The actual dispersion (r) parameter for scipy.stats.nbinom
+        # statsmodels alpha = 1 / r
+        alpha = pipe.named_steps["model"].alpha_
+        joblib.dump({"dispersion": alpha, "mean_corners": float(y_train.mean()), "features": avail},
                     os.path.join(MODEL_DIR, f"corners_{target}_meta.joblib"))
         results[target] = {"mae": mae}
 
@@ -77,20 +99,20 @@ def train(df: pd.DataFrame) -> Dict:
 
 def predict(home_features: dict, away_features: dict, meta: dict) -> Dict:
     """Predict corners distribution."""
-    avail = [f for f in CORNERS_FEATURES]
     row = {**home_features, **away_features, **meta}
-    X = pd.DataFrame([{f: row.get(f, 0.0) for f in avail}]).fillna(0)
 
     predictions = {}
     for target in ["home", "away"]:
         try:
             pipe = joblib.load(os.path.join(MODEL_DIR, f"corners_{target}.joblib"))
             meta_info = joblib.load(os.path.join(MODEL_DIR, f"corners_{target}_meta.joblib"))
+            avail = meta_info.get("features", CORNERS_FEATURES)
         except FileNotFoundError:
             # Fallback league averages
             predictions[f"exp_{target}_corners"] = 5.2 if target == "home" else 4.8
             continue
 
+        X = pd.DataFrame([{f: row.get(f, 0.0) for f in avail}]).fillna(0)
         mu = max(float(pipe.predict(X)[0]), 0.5)
         disp = meta_info.get("dispersion", 0.5)
         predictions[f"exp_{target}_corners"] = round(mu, 2)

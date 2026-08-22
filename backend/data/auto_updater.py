@@ -15,28 +15,9 @@ from sqlalchemy.orm import Session
 from .database import SessionLocal, Match, init_db
 from .data_loader import CORE_COLS, DIV_MAP, _normalise
 
-# ---------------------------------------------------------------------------
-# League → football-data.co.uk URL mapping
-# Season format: "2526" → URL segment "2526"
-# ---------------------------------------------------------------------------
-CURRENT_SEASON = "2526"
-NEXT_SEASON = "2627"
+from ..utils.season import get_current_season, get_next_season
 
-LEAGUE_URLS = {
-    "premier-league": f"https://www.football-data.co.uk/mmz4281/{CURRENT_SEASON}/E0.csv",
-    "la-liga":        f"https://www.football-data.co.uk/mmz4281/{CURRENT_SEASON}/SP1.csv",
-    "serie-a":        f"https://www.football-data.co.uk/mmz4281/{CURRENT_SEASON}/I1.csv",
-    "ligue-1":        f"https://www.football-data.co.uk/mmz4281/{CURRENT_SEASON}/F1.csv",
-    "bundesliga":     f"https://www.football-data.co.uk/mmz4281/{CURRENT_SEASON}/D1.csv",
-}
-
-NEXT_SEASON_URLS = {
-    "premier-league": f"https://www.football-data.co.uk/mmz4281/{NEXT_SEASON}/E0.csv",
-    "la-liga":        f"https://www.football-data.co.uk/mmz4281/{NEXT_SEASON}/SP1.csv",
-    "serie-a":        f"https://www.football-data.co.uk/mmz4281/{NEXT_SEASON}/I1.csv",
-    "ligue-1":        f"https://www.football-data.co.uk/mmz4281/{NEXT_SEASON}/F1.csv",
-    "bundesliga":     f"https://www.football-data.co.uk/mmz4281/{NEXT_SEASON}/D1.csv",
-}
+# URLs are now generated dynamically at runtime to prevent stale state across season boundaries.
 
 HEADERS = {"User-Agent": "SoccerOracle/1.0"}
 
@@ -45,6 +26,10 @@ def _fetch_csv(url: str) -> pd.DataFrame:
     """Download CSV from URL, return DataFrame."""
     try:
         response = requests.get(url, headers=HEADERS, timeout=30)
+        if response.status_code == 300 or response.status_code == 404 or "<html" in response.text.lower()[:500]:
+            print(f"[Updater] No data available yet at {url} (HTTP {response.status_code})")
+            return pd.DataFrame()
+        
         response.raise_for_status()
         content = response.content.decode("latin1")
         df = pd.read_csv(StringIO(content), low_memory=False)
@@ -54,13 +39,13 @@ def _fetch_csv(url: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _insert_new_matches(df: pd.DataFrame, league: str, db: Session) -> int:
+def _insert_new_matches(df: pd.DataFrame, league: str, season: str, db: Session) -> int:
     """Insert only matches not already in DB. Returns count of inserted rows."""
     inserted = 0
     for _, row in df.iterrows():
         existing = db.query(Match).filter(
             Match.league == league,
-            Match.date == row["Date"],
+            Match.date == row["date"],
             Match.home_team == row.get("home_team"),
             Match.away_team == row.get("away_team"),
         ).first()
@@ -70,29 +55,29 @@ def _insert_new_matches(df: pd.DataFrame, league: str, db: Session) -> int:
 
         match = Match(
             league=league,
-            season=CURRENT_SEASON,
-            date=row["Date"],
+            season=season,
+            date=row["date"],
             home_team=row.get("home_team"),
             away_team=row.get("away_team"),
-            fthg=row.get("FTHG"),
-            ftag=row.get("FTAG"),
-            ftr=row.get("FTR"),
-            hthg=row.get("HTHG"),
-            htag=row.get("HTAG"),
-            htr=row.get("HTR"),
-            hs=row.get("HS"),
-            as_=row.get("AS"),
-            hst=row.get("HST"),
-            ast=row.get("AST"),
-            hc=row.get("HC"),
-            ac=row.get("AC"),
-            hf=row.get("HF"),
-            af=row.get("AF"),
-            hy=row.get("HY"),
-            ay=row.get("AY"),
-            hr=row.get("HR"),
-            ar=row.get("AR"),
-            referee=row.get("Referee"),
+            fthg=row.get("fthg"),
+            ftag=row.get("ftag"),
+            ftr=row.get("ftr"),
+            hthg=row.get("hthg"),
+            htag=row.get("htag"),
+            htr=row.get("htr"),
+            hs=row.get("hs"),
+            as_=row.get("as"),
+            hst=row.get("hst"),
+            ast=row.get("ast"),
+            hc=row.get("hc"),
+            ac=row.get("ac"),
+            hf=row.get("hf"),
+            af=row.get("af"),
+            hy=row.get("hy"),
+            ay=row.get("ay"),
+            hr=row.get("hr"),
+            ar=row.get("ar"),
+            referee=row.get("referee"),
         )
         db.add(match)
         inserted += 1
@@ -107,7 +92,14 @@ def run_update(next_season: bool = False) -> dict:
     and inserts new matches into the DB.
     Returns summary dict.
     """
-    url_map = NEXT_SEASON_URLS if next_season else LEAGUE_URLS
+    target_season = get_next_season() if next_season else get_current_season()
+    url_map = {
+        "premier-league": f"https://www.football-data.co.uk/mmz4281/{target_season}/E0.csv",
+        "la-liga":        f"https://www.football-data.co.uk/mmz4281/{target_season}/SP1.csv",
+        "serie-a":        f"https://www.football-data.co.uk/mmz4281/{target_season}/I1.csv",
+        "ligue-1":        f"https://www.football-data.co.uk/mmz4281/{target_season}/F1.csv",
+        "bundesliga":     f"https://www.football-data.co.uk/mmz4281/{target_season}/D1.csv",
+    }
     summary = {}
 
     db: Session = SessionLocal()
@@ -117,14 +109,14 @@ def run_update(next_season: bool = False) -> dict:
             raw = _fetch_csv(url)
 
             if raw.empty:
-                summary[league] = {"status": "error", "inserted": 0}
+                summary[league] = {"status": "ok", "inserted": 0, "note": "No matches yet"}
                 continue
 
             # Keep only available core columns
             keep = [c for c in CORE_COLS if c in raw.columns]
             raw = raw[keep].copy()
             raw["league"] = league
-            raw["season"] = CURRENT_SEASON
+            raw["season"] = target_season
 
             df = _normalise(raw)
 
@@ -135,7 +127,7 @@ def run_update(next_season: bool = False) -> dict:
                 summary[league] = {"status": "no_completed_matches", "inserted": 0}
                 continue
 
-            n = _insert_new_matches(df, league, db)
+            n = _insert_new_matches(df, league, target_season, db)
             summary[league] = {"status": "ok", "inserted": n}
             print(f"[Updater] {league}: {n} new matches inserted.")
 

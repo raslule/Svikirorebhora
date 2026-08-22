@@ -103,10 +103,15 @@ def _normalise(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     # Drop rows missing both teams or result
-    df = df.dropna(subset=["HomeTeam", "AwayTeam"])
-    df.rename(columns={"HomeTeam": "home_team", "AwayTeam": "away_team"}, inplace=True)
-    df = df.sort_values("Date").reset_index(drop=True)
-    return df
+    # Rename teams
+    if "HomeTeam" in df.columns:
+        df.rename(columns={"HomeTeam": "home_team", "AwayTeam": "away_team"}, inplace=True)
+
+    # Convert all stat/categorical columns to lowercase to match DB/FE expectations
+    rename_map = {c: c.lower() for c in num_cols + ["FTR", "HTR", "Referee", "Date"]}
+    df.rename(columns=rename_map, inplace=True)
+
+    return df.sort_values("date").reset_index(drop=True)
 
 
 def load_all_historical() -> pd.DataFrame:
@@ -152,7 +157,7 @@ def seed_database():
         # Check for existing record
         existing = db.query(Match).filter(
             Match.league == row.get("league"),
-            Match.date == row["Date"],
+            Match.date == row["date"],
             Match.home_team == row.get("home_team"),
             Match.away_team == row.get("away_team"),
         ).first()
@@ -164,7 +169,7 @@ def seed_database():
         match = Match(
             league=row.get("league"),
             season=str(row.get("season", "")),
-            date=row["Date"],
+            date=row["date"],
             home_team=row.get("home_team"),
             away_team=row.get("away_team"),
             fthg=row.get("FTHG"),

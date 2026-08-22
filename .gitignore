@@ -24,7 +24,7 @@ frontend/.env
 # Data & DB (derived/disposable artifacts)
 *.db
 *.csv
-data/
+/data/
 downloaded_files/
 
 # Temporary / Scratch & Screenshot artifacts

@@ -4,25 +4,35 @@ Train: ≤2022, Val: 2023-2024, Test: ≥2025 (matching notebook split).
 """
 import numpy as np
 import pandas as pd
+import sqlite3
 import os
 from typing import Dict
 
-from ..data.data_loader import load_all_historical
 from ..data.feature_engineering import build_features
 from . import outcome_model, goals_model, corners_model, fouls_model
 
 
 def run_backtest() -> Dict:
     """Full backtesting pipeline. Returns metrics for all models."""
-    print("[Backtester] Loading historical data...")
-    df = load_all_historical()
+    print("[Backtester] Loading historical data from SQLite database...")
+    try:
+        conn = sqlite3.connect("data/soccer_oracle.db")
+        df = pd.read_sql("SELECT * FROM matches", conn)
+        conn.close()
+    except Exception as e:
+        print(f"[Backtester] DB Error: {e}")
+        df = pd.DataFrame()
+
     if df.empty:
         return {"error": "No data loaded"}
+
+    # SQLite returns string dates; convert to datetime objects
+    df["date"] = pd.to_datetime(df["date"])
 
     print("[Backtester] Building features...")
     df, elo_dict = build_features(df)
 
-    df["Year"] = pd.to_datetime(df["Date"]).dt.year
+    df["Year"] = pd.to_datetime(df["date"]).dt.year
     train_df = df[df["Year"] <= 2022].copy()
     val_df   = df[(df["Year"] >= 2023) & (df["Year"] <= 2024)].copy()
     test_df  = df[df["Year"] >= 2025].copy()

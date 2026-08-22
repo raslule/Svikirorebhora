@@ -10,6 +10,7 @@ import joblib
 import os
 from scipy.optimize import minimize
 from scipy.stats import poisson
+from scipy.special import gammaln
 from typing import Dict, Optional
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts")
@@ -47,61 +48,87 @@ def _tau(x, y, lam, mu, rho):
     return 1.0
 
 
-def _dc_log_likelihood(params, data, teams, time_weights):
-    n_teams = len(teams)
-    att = {t: params[i] for i, t in enumerate(teams)}
-    dfe = {t: params[n_teams + i] for i, t in enumerate(teams)}
+def _dc_log_likelihood_vec(params, home_idx, away_idx, fthg, ftag, weights, n_teams):
+    att = params[:n_teams]
+    dfe = params[n_teams:2 * n_teams]
     home_adv = params[2 * n_teams]
     rho = params[2 * n_teams + 1]
 
-    ll = 0.0
-    for idx, row in data.iterrows():
-        ht, at = row["home_team"], row["away_team"]
-        hg, ag = int(row["fthg"]), int(row["ftag"])
-        w = time_weights.get(idx, 1.0)
+    lam = np.exp(att[home_idx] + dfe[away_idx] + home_adv)
+    mu  = np.exp(att[away_idx] + dfe[home_idx])
+    lam = np.maximum(lam, 0.01)
+    mu  = np.maximum(mu, 0.01)
 
-        lam = np.exp(att.get(ht, 0) + dfe.get(at, 0) + home_adv)
-        mu  = np.exp(att.get(at, 0) + dfe.get(ht, 0))
-        lam = max(lam, 0.01)
-        mu  = max(mu, 0.01)
+    tau = np.ones_like(lam)
+    
+    m00 = (fthg == 0) & (ftag == 0)
+    m01 = (fthg == 0) & (ftag == 1)
+    m10 = (fthg == 1) & (ftag == 0)
+    m11 = (fthg == 1) & (ftag == 1)
 
-        tau = _tau(hg, ag, lam, mu, rho)
-        if tau <= 0:
-            continue
-        ll += w * (np.log(tau) + poisson.logpmf(hg, lam) + poisson.logpmf(ag, mu))
+    tau[m00] = 1.0 - lam[m00] * mu[m00] * rho
+    tau[m01] = 1.0 + lam[m01] * rho
+    tau[m10] = 1.0 + mu[m10] * rho
+    tau[m11] = 1.0 - rho
 
-    return -ll  # Minimise
+    valid = tau > 0
+    if not np.all(valid):
+        lam = lam[valid]
+        mu = mu[valid]
+        tau = tau[valid]
+        fthg = fthg[valid]
+        ftag = ftag[valid]
+        weights = weights[valid]
+
+    log_pmf_h = fthg * np.log(lam) - lam - gammaln(fthg + 1)
+    log_pmf_a = ftag * np.log(mu) - mu - gammaln(ftag + 1)
+
+    ll = np.sum(weights * (np.log(tau) + log_pmf_h + log_pmf_a))
+    return -ll
 
 
-def fit_dixon_coles(df: pd.DataFrame, half_life_days: float = 365.0):
+def fit_dixon_coles(df: pd.DataFrame, half_life_days: float = 365.0, cutoff_days: int = None):
     """Fit Dixon-Coles model on historical data. Returns (att, def, home_adv, rho)."""
     df = df.dropna(subset=["fthg", "ftag", "home_team", "away_team"]).copy()
     df["fthg"] = df["fthg"].astype(int)
     df["ftag"] = df["ftag"].astype(int)
 
+    # Time decay weights
+    max_date = df["date"].max()
+    df["days_ago"] = (max_date - df["date"]).dt.days
+    
+    if cutoff_days is not None:
+        df = df[df["days_ago"] <= cutoff_days].copy()
+        print(f"[GoalsModel] Applied {cutoff_days}-day recency cutoff: {len(df):,} matches remain.")
+    
+    if df.empty:
+        raise ValueError("fit_dixon_coles: DataFrame is empty after filtering.")
+
+    df["time_weight"] = np.exp(-df["days_ago"] / half_life_days)
+
     teams = sorted(pd.concat([df["home_team"], df["away_team"]]).unique())
     n_teams = len(teams)
+    team_map = {t: i for i, t in enumerate(teams)}
 
-    # Time decay weights
-    max_date = df["Date"].max()
-    df["days_ago"] = (max_date - df["Date"]).dt.days
-    df["time_weight"] = np.exp(-df["days_ago"] / half_life_days)
-    time_weights = df["time_weight"].to_dict()
+    home_idx = df["home_team"].map(team_map).values
+    away_idx = df["away_team"].map(team_map).values
+    fthg = df["fthg"].values
+    ftag = df["ftag"].values
+    weights = df["time_weight"].values
 
-    # Initial params: [att_team0..N, def_team0..N, home_adv, rho]
     x0 = np.zeros(2 * n_teams + 2)
-    x0[2 * n_teams] = 0.3    # home advantage
-    x0[2 * n_teams + 1] = -0.1  # rho (small negative)
+    x0[2 * n_teams] = 0.3
+    x0[2 * n_teams + 1] = -0.1
 
     bounds = [(None, None)] * (2 * n_teams) + [(0, 1.5), (-0.5, 0.5)]
 
     result = minimize(
-        _dc_log_likelihood,
+        _dc_log_likelihood_vec,
         x0,
-        args=(df.reset_index(), teams, time_weights),
+        args=(home_idx, away_idx, fthg, ftag, weights, n_teams),
         method="L-BFGS-B",
         bounds=bounds,
-        options={"maxiter": 500, "ftol": 1e-8},
+        options={"maxiter": 300, "ftol": 1e-8},
     )
 
     params = result.x
@@ -113,6 +140,8 @@ def fit_dixon_coles(df: pd.DataFrame, half_life_days: float = 365.0):
     print(f"[GoalsModel] Dixon-Coles fitted. Home adv={home_adv:.3f}, rho={rho:.3f}")
 
     artifacts = {"att": att, "def": dfe, "home_adv": home_adv, "rho": rho, "teams": teams}
+    global _GOALS_MODEL_CACHE
+    _GOALS_MODEL_CACHE = artifacts
     joblib.dump(artifacts, os.path.join(MODEL_DIR, "goals_dc.joblib"))
     return artifacts
 
@@ -129,13 +158,20 @@ def _score_probs(lam: float, mu: float, rho: float, max_goals: int = 9):
     return probs
 
 
+_GOALS_MODEL_CACHE = None
+
+def _load_model_artifacts():
+    global _GOALS_MODEL_CACHE
+    if _GOALS_MODEL_CACHE is None:
+        try:
+            _GOALS_MODEL_CACHE = joblib.load(os.path.join(MODEL_DIR, "goals_dc.joblib"))
+        except FileNotFoundError:
+            _GOALS_MODEL_CACHE = None
+    return _GOALS_MODEL_CACHE
+
 def predict(home_team: str, away_team: str, league: str, elo_diff: float = 0.0) -> Dict:
     """Predict xG, BTTS, Over/Under from Dixon-Coles parameters."""
-    try:
-        arts = joblib.load(os.path.join(MODEL_DIR, "goals_dc.joblib"))
-    except FileNotFoundError:
-        # Fallback: ELO-based xG from notebook formula
-        arts = None
+    arts = _load_model_artifacts()
 
     base_h = LEAGUE_HOME_BASE.get(league, 1.40)
     base_a = LEAGUE_AWAY_BASE.get(league, 1.10)

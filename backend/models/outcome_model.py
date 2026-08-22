@@ -32,8 +32,8 @@ def _prep(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
 
 def train(df: pd.DataFrame) -> Tuple[float, float]:
     """Train XGBoost + Logistic ensemble. Returns (xgb_brier, lr_brier)."""
-    df = df.sort_values("Date").reset_index(drop=True)
-    df["Year"] = pd.to_datetime(df["Date"]).dt.year
+    df = df.sort_values("date").reset_index(drop=True)
+    df["Year"] = pd.to_datetime(df["date"]).dt.year
 
     train_df = df[df["Year"] <= 2023]
     val_df   = df[df["Year"] == 2024]
@@ -41,7 +41,12 @@ def train(df: pd.DataFrame) -> Tuple[float, float]:
 
     X_train, y_train = _prep(train_df.dropna(subset=["ftr"]))
     X_val,   y_val   = _prep(val_df.dropna(subset=["ftr"]))
-    X_test,  y_test  = _prep(test_df.dropna(subset=["ftr"]))
+
+    # If current season test set is empty/too small, evaluate on val set
+    eval_df = test_df if len(test_df.dropna(subset=["ftr"])) >= 10 else val_df
+    X_test,  y_test  = _prep(eval_df.dropna(subset=["ftr"]))
+    if len(X_test) == 0:
+        raise ValueError("No labelled test data available for outcome model evaluation.")
 
     # --- XGBoost ---
     xgb_model = xgb.XGBClassifier(

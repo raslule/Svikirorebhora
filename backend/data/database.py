@@ -52,6 +52,13 @@ class Match(Base):
     ar = Column(Float)
     # Referee
     referee = Column(String)
+    
+    # Pre-match and post-match ELO tracking
+    home_elo_pre = Column(Float)
+    away_elo_pre = Column(Float)
+    home_elo_post = Column(Float)
+    away_elo_post = Column(Float)
+    
     # Engineered features
     home_days_rest = Column(Float)
     away_days_rest = Column(Float)
@@ -81,10 +88,12 @@ class Prediction(Base):
     id = Column(Integer, primary_key=True)
     match_id = Column(Integer, ForeignKey("matches.id"), nullable=True)
     league = Column(String)
+    season = Column(String)
     home_team = Column(String)
     away_team = Column(String)
     match_date = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
+    resolved = Column(Boolean, default=False)
     # 1X2
     prob_home = Column(Float)
     prob_draw = Column(Float)
@@ -106,6 +115,28 @@ class Prediction(Base):
     exp_away_fouls = Column(Float)
     prob_fouls_over_20 = Column(Float)
     prob_fouls_over_25 = Column(Float)
+
+
+class Fixture(Base):
+    __tablename__ = "fixtures"
+    id = Column(Integer, primary_key=True)
+    external_id = Column(Integer, index=True, nullable=True)
+    league = Column(String, index=True)
+    season = Column(String, index=True)
+    matchday = Column(Integer, nullable=True)
+    kickoff_utc = Column(DateTime, index=True)
+    kickoff_local = Column(String, nullable=True)
+    home_team = Column(String, index=True)
+    away_team = Column(String, index=True)
+    home_days_rest = Column(Float, nullable=True)
+    away_days_rest = Column(Float, nullable=True)
+    venue = Column(String, nullable=True)
+    status = Column(String, default="SCHEDULED")
+    synced_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("league", "home_team", "away_team", "kickoff_utc", name="uq_fixture"),
+    )
 
 
 class User(Base):
