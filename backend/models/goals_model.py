@@ -176,15 +176,15 @@ def predict(home_team: str, away_team: str, league: str, elo_diff: float = 0.0) 
     base_h = LEAGUE_HOME_BASE.get(league, 1.40)
     base_a = LEAGUE_AWAY_BASE.get(league, 1.10)
 
-    if arts:
+    if arts and (home_team in arts.get("att", {})) and (away_team in arts.get("def", {})):
         att = arts["att"]
         dfe = arts["def"]
         home_adv = arts["home_adv"]
         rho = arts["rho"]
-        lam = np.exp(att.get(home_team, 0) + dfe.get(away_team, 0) + home_adv)
-        mu  = np.exp(att.get(away_team, 0) + dfe.get(home_team, 0))
+        lam = np.exp(att[home_team] + dfe[away_team] + home_adv)
+        mu  = np.exp(att[away_team] + dfe[home_team])
     else:
-        # ELO fallback from notebook: xG = base + ELO_diff * 0.003
+        # ELO fallback: xG = base + ELO_diff * 0.003
         lam = base_h + elo_diff * 0.003
         mu  = base_a - elo_diff * 0.003
         rho = -0.1

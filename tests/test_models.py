@@ -126,8 +126,8 @@ class TestFoulsModel:
 class TestFeatureEngineering:
     def _sample_df(self):
         import pandas as pd
-        return pd.DataFrame({
-            "Date": pd.to_datetime(["2024-01-01", "2024-01-08", "2024-01-15",
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2024-01-01", "2024-01-08", "2024-01-15",
                                      "2024-01-22", "2024-01-29", "2024-02-05"]),
             "home_team": ["Arsenal", "Chelsea", "Arsenal", "Chelsea", "Arsenal", "Chelsea"],
             "away_team": ["Chelsea", "Arsenal", "Chelsea", "Arsenal", "Chelsea", "Arsenal"],
@@ -146,6 +146,8 @@ class TestFeatureEngineering:
             "ar": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             "referee": ["M.Oliver"] * 6,
         })
+        df["Date"] = df["date"]
+        return df
 
     def test_elo_computed(self):
         from backend.data.feature_engineering import calculate_elo
@@ -176,11 +178,11 @@ class TestFeatureEngineering:
         from backend.data.feature_engineering import add_ghost_game_flag
         import pandas as pd
         df = pd.DataFrame({
-            "Date": pd.to_datetime(["2019-12-01", "2020-04-15", "2021-03-10", "2022-01-01"]),
+            "date": pd.to_datetime(["2019-12-01", "2020-04-15", "2021-03-10", "2022-01-01"]),
             "home_team": ["A"] * 4,
             "away_team": ["B"] * 4,
         })
         result = add_ghost_game_flag(df)
-        assert result.loc[result["Date"] < "2020-03-01", "is_ghost_game"].sum() == 0
-        assert result.loc[result["Date"] == "2020-04-15", "is_ghost_game"].values[0] == 1
-        assert result.loc[result["Date"] == "2022-01-01", "is_ghost_game"].values[0] == 0
+        assert result.loc[result["date"] < "2020-03-01", "is_ghost_game"].sum() == 0
+        assert result.loc[result["date"] == "2020-04-15", "is_ghost_game"].values[0] == 1
+        assert result.loc[result["date"] == "2022-01-01", "is_ghost_game"].values[0] == 0
