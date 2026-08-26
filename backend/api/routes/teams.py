@@ -77,11 +77,12 @@ def get_team_analytics(team_name: str, db: Session = Depends(get_db)):
     defense = 0.0
     try:
         arts = joblib.load(DC_PATH)
-        params = arts.get("params", {})
-        if "att" in params and team_name in params["att"]:
-            attack = params["att"][team_name]
-        if "def" in params and team_name in params["def"]:
-            defense = params["def"][team_name]
+        att_dict = arts.get("att") if "att" in arts else arts.get("params", {}).get("att", {})
+        def_dict = arts.get("def") if "def" in arts else arts.get("params", {}).get("def", {})
+        if team_name in att_dict:
+            attack = att_dict[team_name]
+        if team_name in def_dict:
+            defense = def_dict[team_name]
     except FileNotFoundError:
         pass
         

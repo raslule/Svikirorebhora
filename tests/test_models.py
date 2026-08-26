@@ -218,7 +218,14 @@ class TestFeatureEngineering:
         df = self._sample_df()
         result = add_referee_regime(df)
         assert "referee_regime" in result.columns
-        assert all(result["referee_regime"].isin(["Pre-Respect", "Respect-Campaign", "Webb-Era"]))
+        assert all(result["referee_regime"].isin(["STRICT", "AVERAGE", "LENIENT"]))
+
+    def test_referee_era_assigned(self):
+        from backend.data.feature_engineering import add_referee_era
+        df = self._sample_df()
+        result = add_referee_era(df)
+        assert "referee_era" in result.columns
+        assert all(result["referee_era"].isin(["Pre-Respect", "Respect-Campaign", "Webb-Era"]))
 
     def test_ghost_game_flag(self):
         from backend.data.feature_engineering import add_ghost_game_flag

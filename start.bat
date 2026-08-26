@@ -11,7 +11,7 @@ if not exist ".venv" (
 )
 
 echo [Backend] Starting FastAPI on http://localhost:8000 ...
-start "SoccerOracle Backend" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8000"
+start "SoccerOracle Backend" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload"
 
 echo [Frontend] Starting React app on http://localhost:5173 ...
 start "SoccerOracle Frontend" cmd /k "cd frontend && npm run dev"

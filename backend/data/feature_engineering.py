@@ -59,11 +59,75 @@ def calculate_elo(df: pd.DataFrame, k: float = 20.0, home_adv: float = 100.0) ->
 
 
 # ---------------------------------------------------------------------------
-# Referee Strictness Regime (from notebook insight)
-# Pre-Respect: before 2008, Respect-Campaign: 2008-2016, Webb-Era: 2017+
+# Referee Strictness Regime (Z-score Percentile Classification)
+# STRICT (top 33%), AVERAGE (middle 34%), LENIENT (bottom 33%)
 # ---------------------------------------------------------------------------
 def add_referee_regime(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Assigns STRICT / AVERAGE / LENIENT regime based on referee card & foul z-scores.
+    Falls back to 'AVERAGE' if referee is unknown or has insufficient history.
+    """
     df = df.copy()
+    if "referee" not in df.columns:
+        df["referee_regime"] = "AVERAGE"
+        return df
+
+    played = df[df.get("ftr", pd.Series()).notna()].copy() if "ftr" in df.columns else df.copy()
+    if played.empty:
+        df["referee_regime"] = "AVERAGE"
+        return df
+
+    total_cards = played.get("hy", pd.Series(0, index=played.index)).fillna(0) + \
+                  played.get("ay", pd.Series(0, index=played.index)).fillna(0) + \
+                  played.get("hr", pd.Series(0, index=played.index)).fillna(0) + \
+                  played.get("ar", pd.Series(0, index=played.index)).fillna(0)
+    total_fouls = played.get("hf", pd.Series(0, index=played.index)).fillna(0) + \
+                  played.get("af", pd.Series(0, index=played.index)).fillna(0)
+
+    mean_c, std_c = float(total_cards.mean()), float(total_cards.std())
+    mean_f, std_f = float(total_fouls.mean()), float(total_fouls.std())
+
+    ref_map = {}
+    for ref, group in played.groupby("referee"):
+        if pd.isna(ref) or len(group) <= 10:
+            continue
+        g_c = group.get("hy", pd.Series(0)).fillna(0) + group.get("ay", pd.Series(0)).fillna(0) + \
+              group.get("hr", pd.Series(0)).fillna(0) + group.get("ar", pd.Series(0)).fillna(0)
+        g_f = group.get("hf", pd.Series(0)).fillna(0) + group.get("af", pd.Series(0)).fillna(0)
+        z_c = (g_c.mean() - mean_c) / std_c if std_c else 0
+        z_f = (g_f.mean() - mean_f) / std_f if std_f else 0
+        ref_map[ref] = float((z_c + z_f) / 2.0)
+
+    z_vals = list(ref_map.values())
+    if z_vals:
+        p33 = np.percentile(z_vals, 33)
+        p67 = np.percentile(z_vals, 67)
+    else:
+        p33, p67 = -0.5, 0.5
+
+    regimes = []
+    for ref in df["referee"]:
+        z = ref_map.get(ref, 0.0)
+        if z >= p67:
+            regimes.append("STRICT")
+        elif z <= p33:
+            regimes.append("LENIENT")
+        else:
+            regimes.append("AVERAGE")
+
+    df["referee_regime"] = regimes
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Referee Era (Historical Rule-Change Eras)
+# Pre-Respect (<2008), Respect-Campaign (2008-2016), Webb-Era (2017+)
+# ---------------------------------------------------------------------------
+def add_referee_era(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    if "date" not in df.columns:
+        df["referee_era"] = "Webb-Era"
+        return df
     year = pd.to_datetime(df["date"]).dt.year
     conditions = [
         year < 2008,
@@ -71,7 +135,7 @@ def add_referee_regime(df: pd.DataFrame) -> pd.DataFrame:
         year >= 2017,
     ]
     choices = ["Pre-Respect", "Respect-Campaign", "Webb-Era"]
-    df["referee_regime"] = np.select(conditions, choices, default="Webb-Era")
+    df["referee_era"] = np.select(conditions, choices, default="Webb-Era")
     return df
 
 
@@ -181,22 +245,6 @@ def add_rest_and_fatigue(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Referee Strictness Index (bookings rate per referee)
-# Insight: referees with > 100 matches threshold
-# ---------------------------------------------------------------------------
-def build_referee_index(df: pd.DataFrame) -> pd.Series:
-    df = df.copy()
-    df["TotalCards"] = (df.get("hy", 0) + df.get("ay", 0) + df.get("hr", 0) + df.get("ar", 0)).fillna(0)
-    ref_stats = df.groupby("referee").agg(
-        AvgCards=("TotalCards", "mean"),
-        Matches=("TotalCards", "count"),
-    )
-    ref_stats = ref_stats[ref_stats["Matches"] >= 50]
-    ref_index = ref_stats["AvgCards"].to_dict()
-    return ref_index
-
-
-# ---------------------------------------------------------------------------
 # Master Feature Engineering Pipeline
 # ---------------------------------------------------------------------------
 def build_features(df: pd.DataFrame, existing_elo: Optional[dict] = None) -> tuple:
@@ -205,6 +253,9 @@ def build_features(df: pd.DataFrame, existing_elo: Optional[dict] = None) -> tup
     """
     print("[FE] Adding referee regime...")
     df = add_referee_regime(df)
+
+    print("[FE] Adding referee era...")
+    df = add_referee_era(df)
 
     print("[FE] Adding ghost game flag...")
     df = add_ghost_game_flag(df)
@@ -263,5 +314,4 @@ SOT_FEATURES = [
 CARDS_FEATURES = [
     "Home_Roll_HY", "Away_Roll_AY",
     "Home_Roll_FF", "Away_Roll_FA",
-    "ref_strictness",
 ]

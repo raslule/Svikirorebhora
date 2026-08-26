@@ -17,7 +17,7 @@ from typing import Dict
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-from ..data.feature_engineering import FOULS_FEATURES, build_referee_index
+from ..data.feature_engineering import FOULS_FEATURES
 
 NUMERIC_FEATURES = FOULS_FEATURES
 CATEGORICAL_FEATURES = ["referee_regime"]
@@ -29,17 +29,11 @@ def train(df: pd.DataFrame) -> Dict:
     df["Year"] = pd.to_datetime(df["date"]).dt.year
     df = df.dropna(subset=["hf", "af"]).copy()
 
-    # Add referee strictness index
-    ref_index = build_referee_index(df)
-    df["ref_strictness"] = df["referee"].map(ref_index).fillna(
-        df.get("hf", pd.Series()).mean() + df.get("af", pd.Series()).mean()
-    )
-
     # Ensure regime column exists
     if "referee_regime" not in df.columns:
-        df["referee_regime"] = "Webb-Era"
+        df["referee_regime"] = "AVERAGE"
 
-    num_feats = [f for f in NUMERIC_FEATURES if f in df.columns] + ["ref_strictness"]
+    num_feats = [f for f in NUMERIC_FEATURES if f in df.columns]
     cat_feats = ["referee_regime"]
 
     preprocessor = ColumnTransformer([
@@ -83,15 +77,14 @@ def train(df: pd.DataFrame) -> Dict:
 def predict(home_features: dict, away_features: dict, meta: dict) -> Dict:
     """Predict fouls for home and away teams."""
     row = {**home_features, **away_features, **meta}
-    row.setdefault("referee_regime", "Webb-Era")
-    row.setdefault("ref_strictness", 4.5)
+    row.setdefault("referee_regime", "AVERAGE")
 
     predictions = {}
     for target in ["home", "away"]:
         try:
             pipe = joblib.load(os.path.join(MODEL_DIR, f"fouls_{target}.joblib"))
             meta_info = joblib.load(os.path.join(MODEL_DIR, f"fouls_{target}_meta.joblib"))
-            all_feats = meta_info.get("features", FOULS_FEATURES + ["ref_strictness", "referee_regime"])
+            all_feats = meta_info.get("features", FOULS_FEATURES + ["referee_regime"])
         except FileNotFoundError:
             predictions[f"exp_{target}_fouls"] = 12.0
             continue

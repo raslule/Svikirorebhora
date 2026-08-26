@@ -43,3 +43,14 @@ Following an audit triggered by UI label drift, several key architecture improve
 | **Backtest Cutoff Safety** | Empty DataFrame exception when running backtests. | Hardcoded `df['days_ago'] <= 1000` dropped pre-2023 training rows in chronological splits ($\le 2022$). | Parameterized `fit_dixon_coles(cutoff_days=None)`: backtest splits retain full historical training window ($\le 2022$); `cutoff_days` remains available as an optional parameter for a future live-fit path (not currently active - live predictions are currently served from the single backtester-trained artifact). |
 | **Dixon-Coles Execution Speed** | Dixon-Coles optimization took ~20 minutes on 39.5k matches. | Unvectorized Python `itertuples()` loop in log-likelihood evaluation. | Vectorized `_dc_log_likelihood_vec` using NumPy array operations & `scipy.special.gammaln`, speeding up fits by **20x** (~35s). |
 | **Optimizer Convergence Precision** | Premature stopping under loose tolerance (`ftol=1e-5`). | L-BFGS-B stopped at iteration 15 with Home Adv `0.1976`. | Permanently tightened `ftol` to **`1e-8`** in `goals_model.py`. Empirically verified that convergence flatlines identically at `1e-8` and `1e-12` (`Home Adv = 0.2018`, `Rho = -0.0694`). |
+
+
+### 7. Referee Feature Streamlining & Disambiguation (Aug 2026)
+Following an ablation study evaluating high-cardinality referee inputs vs team form features:
+
+| Area | Problem / Finding | Solution & Architectural Guarantee |
+| :--- | :--- | :--- |
+| **Referee Name Elimination** | Raw referee name strings (high-cardinality OHE) and continuous `ref_strictness` added noise and degraded out-of-sample test MAE (Fouls MAE 4.2703 with `ref_strictness` vs 4.2059 without). | Individual referee name features and `ref_strictness` are permanently dropped from production feature sets (Variant B). |
+| **Model Feature Symmetry** | Fouls and Cards models were treating referee features inconsistently across pipelines. | **Fouls Model**: Retains ONLY the coarse behavioral strictness bucket (`referee_regime`: `STRICT`, `AVERAGE`, `LENIENT`).<br>**Cards Model**: Drops ALL referee inputs entirely, relying solely on team rolling form features (`Home_Roll_HY`, `Away_Roll_AY`, etc.). |
+| **`referee_regime` Disambiguation** | `feature_engineering.py`'s historical era classification (`Pre-Respect`, `Respect-Campaign`, `Webb-Era`) was overwriting `matches.referee_regime` (z-score behavioral bucket). | Disambiguated into two distinct columns:<br>- `referee_era`: Historical rule-change era (`Pre-Respect`, `Respect-Campaign`, `Webb-Era`).<br>- `referee_regime`: Z-score strictness bucket (`STRICT`, `AVERAGE`, `LENIENT`). |
+
